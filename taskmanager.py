@@ -33,6 +33,7 @@ class TaskManagerNode(Node):
         self.subscription = self.create_subscription(Image, topic_name.value, self.listener_callback, 10)
         self.detection_publisher = self.create_publisher(Detection2DArray, 'trt_detection', 10)
 
+        self.state = State.HOLD
         # C
 
     def onReceive(self, ros_msg):
@@ -67,4 +68,18 @@ class TaskManagerNode(Node):
 
     def main(self):
         while True:
-            pass
+
+            new_state = self.state
+            
+            if self.state == State.HOLD:
+                new_state = self.hold()
+            elif self.state == State.SEARCHING:
+                new_state = self.search()
+            elif self.state == State.NAVIGATING:
+                new_state = self.navigate()
+            elif self.state == State.GRASPING:
+                new_state = self.grasp()
+            elif self.state == State.DEPOSITING:
+                new_state = self.deposit()
+            
+            self.state = new_state
