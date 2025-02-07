@@ -110,10 +110,12 @@ class TaskManagerNode(Node):
 
 
 
-    # NONBLOCKING CODE YOU FOOOOOOOOOL
+    # define vars
+
+
 
     def hold(self):  
-        # tell the drone to hold position
+        drone_hover()
         
         # listen for desiredState
         # if there is desiredState, state = desiredState
@@ -123,7 +125,7 @@ class TaskManagerNode(Node):
         pass
 
     def grasp(self):
-        # hold drone current position
+        drone_hover()
         
         # calculate grasp
         # check livedetect information
@@ -145,6 +147,17 @@ class TaskManagerNode(Node):
         # if no object is detected for X out of Y LiveDetect messages
             # state = search
         pass
+
+    def approachPoint(self, FLUpoint, range, height):
+        # calculate where drone needs to be to be within X range of a point,
+        approachPointFLU = 
+
+        # convert FLU approach point to NED
+        approachPointNED = FLU2NED(approachPointFLU)
+
+        # move drone to that point
+        send_drone_waypoint(approachPointNED)
+        pass
     
     def deposit(self):
         # drops the object
@@ -154,6 +167,41 @@ class TaskManagerNode(Node):
     def checkForErrors(self):
         # Read most recent Telemetry and ArmStatus data
         # Set mode to State.HOLD if any errors
+        pass
+
+    def process_detection(self):
+        # TODO kay+mark fill in
+        pass
+
+    def process_grasp(self):
+        # TODO kay+mark fill in
+        # request grasp calculation
+        pass
+
+    def cam2FLU(self, point):
+        # fill in using tf2 funcitionality
+        # taylor (+ jakub?)
+        # read the docs
+        pass
+
+    def FLU2NED(self, point):
+        # fill in using tf2 funcitionality
+        # taylor + jakub
+        # read the docs
+        pass
+
+    def drone_hover(self):
+        # pull drone current position via telemetry
+        currentPos = self.telemetry.position
+
+        # TODO convert coords here if needed
+
+        # send waypoint
+        send_drone_waypoint(currentPos)
+        pass
+    
+    def send_drone_waypoint(self, point):
+        # give drone NED coordinate to navigate to
         pass
 
     def main(self):
