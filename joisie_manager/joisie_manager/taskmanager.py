@@ -140,6 +140,20 @@ class TaskManagerNode(Node):
         pass
     
     # -----
+
+    def sendWaypointNED(self, NEDpoint: list[float, float, float], heading=None):
+        # give drone NED coordinate to navigate to
+        
+        # keep the current heading if not given
+        if not heading:
+            heading = self.telemetry.attitude
+        else:
+            pass
+            heading = self.quaternion2head(heading)       
+        
+        # send waypoint by creating a PoseStamped message
+                
+        pass
     
     def search(self):
         # move drone to next position in search pattern
@@ -185,44 +199,27 @@ class TaskManagerNode(Node):
         # read the docs
         pass
 
-    def FLU2NED(self, FLUpoint: list[float, float, float]) -> list[float, float, float]:
+    def FLU2NED(self, FLUoffsetPoint: list[float, float, float], yaw) -> list[float, float, float]:
         """
-        Heading 0 to 360
+        yaw is Heading in degrees 0 to 360
         """
         # fill in using tf2 funcitionality
         # taylor + jakub
-        
-    #         # take in a local offset in meters and a yaw in degrees, convert to the NED frame, and return the NED coordinates
+        # take in a local offset in meters and a yaw in degrees, convert to the NED frame, and return the NED coordinates
     
-    # def ned_point_from_flu_offset(self, curr_ned_pos: list[float, float, float], offset_flu: list[float, float, float]) -> list[float, float, float]:
-    #     """Convert a local FLU offset in meters to NED coordinates
-    #     Returns the offset in NED, not the global NED"""
-    #     # convert yaw to radians
-    #     yaw_current = self.vehicle_local_position.heading    
+        """Convert a local FLU offset in meters to NED coordinates
+        Returns the offset in NED, not the global NED"""
+        # convert yaw to radians
+        yaw_rad = yaw * (pi/180)   
         
-    #     # convert the offset to rotated FLU
-    #     rotated_flu_x = offset_flu[0] * math.cos(yaw_current) + offset_flu[1] * math.sin(yaw_current)
-    #     rotated_flu_y = offset_flu[0] * math.sin(yaw_current) - offset_flu[1] * math.cos(yaw_current)
-    #     rotated_flu_z = offset_flu[2]
+        # convert the offset to rotated FLU
+        rotated_flu_x = FLUoffsetPoint[0] * math.cos(yaw_rad) + FLUoffsetPoint[1] * math.sin(yaw_rad)
+        rotated_flu_y = FLUoffsetPoint[0] * math.sin(yaw_rad) - FLUoffsetPoint[1] * math.cos(yaw_rad)
+        rotated_flu_z = FLUoffsetPoint[2]
         
-    #     # convert to NED coordinates
-    #     offset_ned = [rotated_flu_x, rotated_flu_y, -rotated_flu_z]  
-    #     return [curr_ned_pos[0] + offset_ned[0], curr_ned_pos[1] + offset_ned[1], curr_ned_pos[2] + offset_ned[2]]
-        pass
-
-    def sendWaypointNED(self, NEDpoint: list[float, float, float], heading=None):
-        # give drone NED coordinate to navigate to
-        
-        # keep the current heading if not given
-        if not heading:
-            heading = self.telemetry.attitude
-        else:
-            pass
-            heading = self.quaternion2head(heading)       
-        
-        # send waypoint by creating a PoseStamped message
-                
-        pass
+        # convert to NED coordinates
+        offset_ned = [rotated_flu_x, rotated_flu_y, -rotated_flu_z]  
+        return [self.lastSetpointNED[0] + offset_ned[0], self.lastSetpointNED[1] + offset_ned[1], self.lastSetpointNED[2] + offset_ned[2]]
 
     def droneHover(self):   
         sendWaypointNED(self.lastSetpointNED)
