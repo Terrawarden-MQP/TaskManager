@@ -234,8 +234,29 @@ class TaskManagerNode(Node):
         pass
 
     def quaternion2head(self, quat):
-        # convert quaternion to heading
-        pass
+        """Get the equivalent yaw-pitch-roll angles aka. intrinsic Tait-Bryan angles following the z-y'-x'' convention
+
+        Returns:
+            yaw:    rotation angle around the z-axis in radians, in the range `[-pi, pi]`
+            pitch:  rotation angle around the y'-axis in radians, in the range `[-pi/2, pi/2]`
+            roll:   rotation angle around the x''-axis in radians, in the range `[-pi, pi]` 
+
+        The resulting rotation_matrix would be R = R_x(roll) R_y(pitch) R_z(yaw)
+
+        Note: 
+            This feature only makes sense when referring to a unit quaternion. Calling this method will implicitly normalise the Quaternion object to a unit quaternion if it is not already one.
+        """
+        
+        qw = quat.w
+        qx = quat.x
+        qy = quat.y
+        qz = quat.z
+
+        yaw = atan2(2.0*(qy*qz + qw*qx), qw*qw - qx*qx - qy*qy + qz*qz)
+        pitch = asin(-2.0*(qx*qz - qw*qy))
+        roll = atan2(2.0*(qx*qy + qw*qz), qw*qw + qx*qx - qy*qy - qz*qz)
+
+        return yaw, pitch, roll
     
     def sendWaypointNED(self, NEDpoint: list[float, float, float], heading=None):
         # give drone NED coordinate to navigate to
@@ -246,7 +267,6 @@ class TaskManagerNode(Node):
         else:
             pass
             heading = self.quaternion2head(heading)       
-            # TODO: code-up ^^^
         
         # send waypoint by creating a PoseStamped message
                 
