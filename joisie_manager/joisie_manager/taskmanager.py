@@ -161,14 +161,6 @@ class TaskManagerNode(Node):
             # state = search
         pass
     
-    def isInPosNED(self, NEDpoint: list[float, float, float], tolerance: float) -> bool:
-        for i in range(len(NEDpoint)):
-            if (NEDpoint(i) - tolerance <= lastSetpointNED(i)) and (lastSetpointNED(i) <= NEDpoint(i) + tolerance):
-                continue
-            else: return False
-        
-        return True
-    
     def isInPosition(self, FLUpoint: list[float, float, float], tolerance: float) -> bool:
         """
         FLUpoint is goal position
@@ -192,19 +184,6 @@ class TaskManagerNode(Node):
         # taylor - get help (or at least a buddy)
         # read the docs
         pass
-  
-    def heading_to_px4_yaw(self, heading: float) -> float:
-        """Convert a heading in degrees [0, 360) to a PX4 yaw in radians (-pi, pi]
-        Heading is in degrees, yaw is in radians"""
-        heading = heading % 360.0
-        if heading > 180.0:
-            heading = heading - 360.0
-        return heading * (math.pi / 180.0) # heading is backwards 
-    
-    def px4_yaw_to_heading(self, yaw: float) -> float:
-        """Convert a PX4 yaw in radians (-pi, pi] to a heading in degrees [0, 360)
-        Yaw is in radians, heading is in degrees"""
-        return (yaw * (180.0 / math.pi)) % 360.0
 
     def FLU2NED(self, FLUpoint: list[float, float, float]) -> list[float, float, float]:
         """
@@ -251,6 +230,14 @@ class TaskManagerNode(Node):
                 
         pass
 
+    def isInPosNED(self, NEDpoint: list[float, float, float], tolerance: float) -> bool:
+        for i in range(len(NEDpoint)):
+            if (NEDpoint(i) - tolerance <= lastSetpointNED(i)) and (lastSetpointNED(i) <= NEDpoint(i) + tolerance):
+                continue
+            else: return False
+        
+        return True
+
     def quaternion2head(self, quat):
         """Get the equivalent yaw-pitch-roll angles aka. intrinsic Tait-Bryan angles following the z-y'-x'' convention
 
@@ -276,6 +263,19 @@ class TaskManagerNode(Node):
 
         return yaw, pitch, roll
     
+    def heading_to_px4_yaw(self, heading: float) -> float:
+        """Convert a heading in degrees [0, 360) to a PX4 yaw in radians (-pi, pi]
+        Heading is in degrees, yaw is in radians"""
+        heading = heading % 360.0
+        if heading > 180.0:
+            heading = heading - 360.0
+        return heading * (math.pi / 180.0) # heading is backwards 
+    
+    def px4_yaw_to_heading(self, yaw: float) -> float:
+        """Convert a PX4 yaw in radians (-pi, pi] to a heading in degrees [0, 360)
+        Yaw is in radians, heading is in degrees"""
+        return (yaw * (180.0 / math.pi)) % 360.0
+
     # -----
     
     def deposit(self):
