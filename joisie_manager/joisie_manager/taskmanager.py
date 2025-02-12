@@ -210,12 +210,6 @@ class TaskManagerNode(Node):
     #     return [curr_ned_pos[0] + offset_ned[0], curr_ned_pos[1] + offset_ned[1], curr_ned_pos[2] + offset_ned[2]]
         pass
 
-    def droneHover(self):
-        # pull drone current position via telemetry
-        currentPos = self.telemetry.position      
-        sendWaypointNED(currentPos)
-        pass
-
     def sendWaypointNED(self, NEDpoint: list[float, float, float], heading=None):
         # give drone NED coordinate to navigate to
         
@@ -229,6 +223,9 @@ class TaskManagerNode(Node):
         # send waypoint by creating a PoseStamped message
                 
         pass
+
+    def droneHover(self):   
+        sendWaypointNED(self.lastSetpointNED)
 
     def isInPosNED(self, NEDpoint: list[float, float, float], tolerance: float) -> bool:
         for i in range(len(NEDpoint)):
