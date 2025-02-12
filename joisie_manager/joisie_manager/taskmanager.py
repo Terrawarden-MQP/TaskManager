@@ -7,10 +7,13 @@ from sensor_msgs.msg import Image
 from std_msgs.msg import String, Boolean
 from vision_msgs.msg import Detection2D
 from geometry_msgs.msg import Point2D, PoseWithCovariance, PoseStamped
+import tf2_ros
+import transformations
 
 import cv2
 import numpy as np
 import os
+import math
 
 from enum import Enum, auto
 
@@ -79,6 +82,8 @@ class TaskManagerNode(Node):
 
         self.state = State.HOLD
 
+        self.lastSetpointNED = None #TODO replacce
+
     def receive_desired_state(self, ros_msg: String):
         bindings = {
             "HOLD": State.HOLD,
@@ -112,10 +117,11 @@ class TaskManagerNode(Node):
 
     # define vars
 
+    # -----
 
 
     def hold(self):  
-        drone_hover()
+        droneHover()
         
         # listen for desiredState
         # if there is desiredState, state = desiredState
@@ -125,13 +131,15 @@ class TaskManagerNode(Node):
         pass
 
     def grasp(self):
-        drone_hover()
+        droneHover()
         
         # calculate grasp
         # check livedetect information
         # if bounding box size is within 'pickup' range AND bounding box centroid is within 'pickup' range
             # execute grasp
         pass
+    
+    # -----
     
     def search(self):
         # move drone to next position in search pattern
@@ -140,24 +148,111 @@ class TaskManagerNode(Node):
         pass
 
     def navigate(self):
-        # move drone to next position in navigation sequence
+        # perform approach sequence
+        CAM_2D = [self.detection.bbox.center.x, self.detection.bbox.center.y]
+        FLU_pos = self.offsetPointFLU(self.cam2FLU(CAM_2D), [0, 0, 0])
+        NED_pos = self.FLU2NED(FLU_pos, self.quaternion2head(self.telemetry.attitude))
+        self.sendWaypointNED(NED_pos)
+
         # check livedetect information
         # if bounding box size is within 'pickup' range AND bounding box centroid is within 'pickup' range
             # state = grasp
         # if no object is detected for X out of Y LiveDetect messages
             # state = search
         pass
-
-    def approachPoint(self, FLUpoint, range, height):
-        # calculate where drone needs to be to be within X range of a point,
-        approachPointFLU = 
-
-        # convert FLU approach point to NED
-        approachPointNED = FLU2NED(approachPointFLU)
-
-        # move drone to that point
-        send_drone_waypoint(approachPointNED)
+    
+    def isInPosNED(self, NEDpoint: list[float, float, float], tolerance: float) -> bool:
         pass
+    
+    def isInPosition(self, FLUpoint: list[float, float, float], tolerance: float) -> bool:
+        """
+        FLUpoint is goal position
+        tolerance is acceptable difference between drone position and given position
+        return TRUE if drone is in position
+        """
+        return
+
+    def offsetPointFLU(self, FLUpoint: list[float, float, float], FLUoffset: list[float, float, float]) -> list[float, float, float]:
+        """
+        Approach the drone to a point in FLU coordinates
+        FLU = [forward, left, up] in meters
+        FLUoffset = to offset the point in the local FLU drone frame                
+        """
+        
+        # calculate where drone needs to be to be within X range of a point,
+        return [FLUpoint[0] + FLUoffset[0], FLUpoint[1] + FLUoffset[1], FLUpoint[2] + FLUoffset[2]]
+
+    def cam2FLU(self, point):
+        # fill in using tf2 funcitionality
+        # taylor - get help (or at least a buddy)
+        # read the docs
+        pass
+
+        
+    def heading_to_px4_yaw(self, heading: float) -> float:
+        """Convert a heading in degrees [0, 360) to a PX4 yaw in radians (-pi, pi]
+        Heading is in degrees, yaw is in radians"""
+        heading = heading % 360.0
+        if heading > 180.0:
+            heading = heading - 360.0
+        return heading * (math.pi / 180.0) # heading is backwards 
+    
+    def px4_yaw_to_heading(self, yaw: float) -> float:
+        """Convert a PX4 yaw in radians (-pi, pi] to a heading in degrees [0, 360)
+        Yaw is in radians, heading is in degrees"""
+        return (yaw * (180.0 / math.pi)) % 360.0
+
+    def FLU2NED(self, FLUpoint: list[float, float, float]) -> list[float, float, float]:
+        """
+        Heading 0 to 360
+        """
+        # fill in using tf2 funcitionality
+        # taylor + jakub
+        
+    #         # take in a local offset in meters and a yaw in degrees, convert to the NED frame, and return the NED coordinates
+    
+    # def ned_point_from_flu_offset(self, curr_ned_pos: list[float, float, float], offset_flu: list[float, float, float]) -> list[float, float, float]:
+    #     """Convert a local FLU offset in meters to NED coordinates
+    #     Returns the offset in NED, not the global NED"""
+    #     # convert yaw to radians
+    #     yaw_current = self.vehicle_local_position.heading    
+        
+    #     # convert the offset to rotated FLU
+    #     rotated_flu_x = offset_flu[0] * math.cos(yaw_current) + offset_flu[1] * math.sin(yaw_current)
+    #     rotated_flu_y = offset_flu[0] * math.sin(yaw_current) - offset_flu[1] * math.cos(yaw_current)
+    #     rotated_flu_z = offset_flu[2]
+        
+    #     # convert to NED coordinates
+    #     offset_ned = [rotated_flu_x, rotated_flu_y, -rotated_flu_z]  
+    #     return [curr_ned_pos[0] + offset_ned[0], curr_ned_pos[1] + offset_ned[1], curr_ned_pos[2] + offset_ned[2]]
+        pass
+
+    def droneHover(self):
+        # pull drone current position via telemetry
+        currentPos = self.telemetry.position      
+        sendWaypointNED(currentPos)
+        pass
+
+    def quaternion2head(self, quat):
+        # convert quaternion to heading
+        pass
+    
+    def sendWaypointNED(self, NEDpoint: list[float, float, float], heading=None):
+        # give drone NED coordinate to navigate to
+        
+        # keep the current heading if not given
+        if not heading:
+            heading = self.telemetry.attitude
+        else:
+            pass
+            heading = self.quaternion2head(heading)       
+            # TODO: code-up ^^^
+        
+        # send waypoint by creating a PoseStamped message
+                
+        pass
+    
+    # -----
     
     def deposit(self):
         # drops the object
@@ -169,40 +264,21 @@ class TaskManagerNode(Node):
         # Set mode to State.HOLD if any errors
         pass
 
-    def process_detection(self):
+    # -----
+
+    def processDetection(self):
         # TODO kay+mark fill in
         pass
 
-    def process_grasp(self):
+    def processGrasp(self):
         # TODO kay+mark fill in
         # request grasp calculation
         pass
 
-    def cam2FLU(self, point):
-        # fill in using tf2 funcitionality
-        # taylor (+ jakub?)
-        # read the docs
-        pass
+    # -----
 
-    def FLU2NED(self, point):
-        # fill in using tf2 funcitionality
-        # taylor + jakub
-        # read the docs
-        pass
 
-    def drone_hover(self):
-        # pull drone current position via telemetry
-        currentPos = self.telemetry.position
 
-        # TODO convert coords here if needed
-
-        # send waypoint
-        send_drone_waypoint(currentPos)
-        pass
-    
-    def send_drone_waypoint(self, point):
-        # give drone NED coordinate to navigate to
-        pass
 
     def main(self):
         while True:
