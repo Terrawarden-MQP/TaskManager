@@ -162,7 +162,12 @@ class TaskManagerNode(Node):
         pass
     
     def isInPosNED(self, NEDpoint: list[float, float, float], tolerance: float) -> bool:
-        pass
+        for i in range(len(NEDpoint)):
+            if (NEDpoint(i) - tolerance <= lastSetpointNED(i)) and (lastSetpointNED(i) <= NEDpoint(i) + tolerance):
+                continue
+            else: return False
+        
+        return True
     
     def isInPosition(self, FLUpoint: list[float, float, float], tolerance: float) -> bool:
         """
@@ -187,8 +192,7 @@ class TaskManagerNode(Node):
         # taylor - get help (or at least a buddy)
         # read the docs
         pass
-
-        
+  
     def heading_to_px4_yaw(self, heading: float) -> float:
         """Convert a heading in degrees [0, 360) to a PX4 yaw in radians (-pi, pi]
         Heading is in degrees, yaw is in radians"""
@@ -233,6 +237,20 @@ class TaskManagerNode(Node):
         sendWaypointNED(currentPos)
         pass
 
+    def sendWaypointNED(self, NEDpoint: list[float, float, float], heading=None):
+        # give drone NED coordinate to navigate to
+        
+        # keep the current heading if not given
+        if not heading:
+            heading = self.telemetry.attitude
+        else:
+            pass
+            heading = self.quaternion2head(heading)       
+        
+        # send waypoint by creating a PoseStamped message
+                
+        pass
+
     def quaternion2head(self, quat):
         """Get the equivalent yaw-pitch-roll angles aka. intrinsic Tait-Bryan angles following the z-y'-x'' convention
 
@@ -257,20 +275,6 @@ class TaskManagerNode(Node):
         roll = atan2(2.0*(qx*qy + qw*qz), qw*qw + qx*qx - qy*qy - qz*qz)
 
         return yaw, pitch, roll
-    
-    def sendWaypointNED(self, NEDpoint: list[float, float, float], heading=None):
-        # give drone NED coordinate to navigate to
-        
-        # keep the current heading if not given
-        if not heading:
-            heading = self.telemetry.attitude
-        else:
-            pass
-            heading = self.quaternion2head(heading)       
-        
-        # send waypoint by creating a PoseStamped message
-                
-        pass
     
     # -----
     
