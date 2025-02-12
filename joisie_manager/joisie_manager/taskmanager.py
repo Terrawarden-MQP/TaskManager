@@ -140,6 +140,11 @@ class TaskManagerNode(Node):
         pass
     
     # -----
+    def cam2FLU(self, point):
+        # fill in using tf2 funcitionality
+        # taylor - get help (or at least a buddy)
+        # read the docs
+        pass
 
     def sendWaypointNED(self, NEDpoint: list[float, float, float], heading=None):
         # give drone NED coordinate to navigate to
@@ -181,6 +186,8 @@ class TaskManagerNode(Node):
         tolerance is acceptable difference between drone position and given position
         return TRUE if drone is in position
         """
+        # does this even need to exist?
+        # because if the drone is in a certain FLU position, that position will be [0,0,0]
         return
 
     def offsetPointFLU(self, FLUpoint: list[float, float, float], FLUoffset: list[float, float, float]) -> list[float, float, float]:
@@ -192,12 +199,6 @@ class TaskManagerNode(Node):
         
         # calculate where drone needs to be to be within X range of a point,
         return [FLUpoint[0] + FLUoffset[0], FLUpoint[1] + FLUoffset[1], FLUpoint[2] + FLUoffset[2]]
-
-    def cam2FLU(self, point):
-        # fill in using tf2 funcitionality
-        # taylor - get help (or at least a buddy)
-        # read the docs
-        pass
 
     def FLU2NED(self, FLUoffsetPoint: list[float, float, float], yaw) -> list[float, float, float]:
         """
