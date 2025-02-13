@@ -6,6 +6,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import Image
 from std_msgs.msg import String, Boolean
 from vision_msgs.msg import Detection2D
+# TODO add drone telemetry import + publisher + subscriber
 from geometry_msgs.msg import Pose2D, Point, PoseWithCovariance, PoseStamped
 import tf2_ros
 import transformations
@@ -239,26 +240,46 @@ class TaskManagerNode(Node):
     # -----
     def cam2FLU(self, point):
         # fill in using tf2 funcitionality
-        # taylor - get help (or at least a buddy)
+        # TODO - mark
         # read the docs
         pass
 
     def sendWaypointNED(self, NEDpoint: list[float, float, float], heading=None):
+        """
+        NEDpoint is the waypoiont to send to the drone in [N,E,D] format
+        heading is OPTIONAL, and is the yaw
+        """
         # give drone NED coordinate to navigate to
         
         # keep the current heading if not given
         if not heading:
             heading = self.telemetry.attitude
-        else:
-            pass
-            heading = self.quaternion2head(heading)       
+            # heading = self.quaternion2head(heading)      
+               
         
         # send waypoint by creating a PoseStamped message
+        waypoint_msg = PoseStamped()
+        header = Header()
+        header.stamp = self.get_clock().now().to_msg()
+        header.frame_id = "map"  # Replace with your desired frame ID
+        waypoint_msg.header = header
+
+        # Set the pose data (example values)
+        waypoint_msg.pose.position.x = NEDpoint(0)
+        waypoint_msg.pose.position.y = NEDpoint(1)
+        waypoint_msg.pose.position.z = NEDpoint(2)
+        waypoint_msg.pose.orientation.x = heading.x
+        waypoint_msg.pose.orientation.y = heading.y
+        waypoint_msg.pose.orientation.z = heading.z
+        waypoint_msg.pose.orientation.w = heading.w
+
+        self.drone_publisher.publish(waypoint_msg)
                 
         pass
     
     def search(self):
         # move drone to next position in search pattern
+        # just slowly spin for now
         # if new/different data from LiveDetect
             # state = navigate
         pass
@@ -270,22 +291,13 @@ class TaskManagerNode(Node):
         NED_pos = self.FLU2NED(FLU_pos, self.quaternion2head(self.telemetry.attitude))
         self.sendWaypointNED(NED_pos)
 
-        # check livedetect information
-        # if bounding box size is within 'pickup' range AND bounding box centroid is within 'pickup' range
-            # state = grasp
-        # if no object is detected for X out of Y LiveDetect messages
-            # state = search
+        if (isInPosNED(NED_pos)):
+            # check livedetect information
+            # if bounding box size is within 'pickup' range AND bounding box centroid is within 'pickup' range
+                # state = grasp
+            # if no object is detected for X out of Y LiveDetect messages
+                # state = search
         pass
-    
-    def isInPosition(self, FLUpoint: list[float, float, float], tolerance: float) -> bool:
-        """
-        FLUpoint is goal position
-        tolerance is acceptable difference between drone position and given position
-        return TRUE if drone is in position
-        """
-        # does this even need to exist?
-        # because if the drone is in a certain FLU position, that position will be [0,0,0]
-        return
 
     def offsetPointFLU(self, FLUpoint: list[float, float, float], FLUoffset: list[float, float, float]) -> list[float, float, float]:
         """
