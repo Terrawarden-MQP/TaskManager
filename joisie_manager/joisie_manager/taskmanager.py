@@ -4,7 +4,7 @@ from rclpy.node import Node
 
 # CV Bridge and message imports
 from sensor_msgs.msg import Image
-from std_msgs.msg import String, Boolean
+from std_msgs.msg import String, Boolean, Header
 from vision_msgs.msg import Detection2D
 # TODO add drone telemetry import + publisher + subscriber
 from geometry_msgs.msg import Pose2D, Point, PoseWithCovariance, PoseStamped
@@ -261,7 +261,7 @@ class TaskManagerNode(Node):
         waypoint_msg = PoseStamped()
         header = Header()
         header.stamp = self.get_clock().now().to_msg()
-        header.frame_id = "map"  # Replace with your desired frame ID
+        header.frame_id = "droneNED"  # Replace with your desired frame ID
         waypoint_msg.header = header
 
         # Set the pose data (example values)
@@ -297,7 +297,7 @@ class TaskManagerNode(Node):
                 # state = grasp
             # if no object is detected for X out of Y LiveDetect messages
                 # state = search
-        pass
+            pass
 
     def offsetPointFLU(self, FLUpoint: list[float, float, float], FLUoffset: list[float, float, float]) -> list[float, float, float]:
         """
@@ -320,7 +320,7 @@ class TaskManagerNode(Node):
         """Convert a local FLU offset in meters to NED coordinates
         Returns the offset in NED, not the global NED"""
         # convert yaw to radians
-        yaw_rad = yaw * (pi/180)   
+        yaw_rad = yaw * (math.pi/180)   
         
         # convert the offset to rotated FLU
         rotated_flu_x = FLUoffsetPoint[0] * math.cos(yaw_rad) + FLUoffsetPoint[1] * math.sin(yaw_rad)
