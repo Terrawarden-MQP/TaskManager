@@ -6,7 +6,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import Image
 from std_msgs.msg import String, Boolean
 from vision_msgs.msg import Detection2D
-from geometry_msgs.msg import Point2D, PoseWithCovariance, PoseStamped
+from geometry_msgs.msg import Pose2D, Point, PoseWithCovariance, PoseStamped
 import tf2_ros
 import transformations
 
@@ -73,18 +73,54 @@ class TaskManagerNode(Node):
 
         self.drone_publisher = self.create_publisher(PoseStamped, 
                                                     self.get_parameter('drone_pose_topic').value, 10)
-        self.centroid_publisher = self.create_publisher(Point2D, 
+        self.centroid_publisher = self.create_publisher(Pose2D, 
                                                     self.get_parameter('centroid_topic').value, 10)
         self.grasp_publisher = self.create_publisher(PoseStamped, 
                                                     self.get_parameter('arm_grasp_topic').value, 10)
 
         self.in_range_service = self.create_client(Boolean, self.get_parameter('arm_grasp_topic').value)
 
-        self.state = State.HOLD
 
-        self.lastSetpointNED = None #TODO replacce
+        self.declare_parameter('debug', '0b00000')
+        debug = self.get_parameter('debug').value
+        self.debug_publish  = bool(debug & 0b10000)
+        self.debug_drone    = bool(debug & 0b01000)
+        self.debug_detect   = bool(debug & 0b00100)
+        self.debug_vbm      = bool(debug & 0b00010)
+        self.debug_arm      = bool(debug & 0b00001)
 
+        # INITIAL STATE
+        self._state = State.HOLD
+
+        # STORE PREVIOUS MESSAGE SENT PER TOPIC
+        self.lastSentMessages = {}
+        self.received_new = {
+            self.state_setter_subscriber.topic: False,
+            self.image_subscriber.topic: False,
+            self.detection_subscriber.topic: False,
+            # self.telemetry_subscriber.topic: False,
+            self.grasp_subscriber.topic: False,
+            # self.arm_status_subscriber.topic: False,
+        }
+
+        self.lastSetpointNED = None #TODO replace
+
+    #
+    #### SET UP INCOMING MESSAGES AS PROPERTIES SO WE CAN KEEP TRACK OF WHAT
+    #### NEW INFORMATION HAS / HASN'T BEEN ACCESSED
+    #
+
+    @property
+    def state(self) -> State:
+        self.received_new[self.state_setter_subscriber.topic] = False
+        return self._state
+
+    @state.setter
+    def state_setter(self, value) -> State:
+        self._state = value
+    
     def receive_desired_state(self, ros_msg: String):
+        self.received_new[self.state_setter_subscriber.topic] = True
         bindings = {
             "HOLD": State.HOLD,
             "SEARCH": State.SEARCHING,
@@ -98,22 +134,83 @@ class TaskManagerNode(Node):
         except:
             print("No matching state for string:", string)
 
+    @property
+    def detection(self) -> Detection2D:
+        self.received_new[self.detection_subscriber.topic] = False
+        return self._detection
+
+    @detection.setter
     def receive_detection(self, ros_msg: Detection2D):
-        self.detection = ros_msg
+        self.received_new[self.detection_subscriber.topic] = True
+        self._detection = ros_msg
 
+    @property
+    def raw_image(self) -> Image:
+        self.received_new[self.image_subscriber.topic] = False
+        return self._raw_image
+
+    @raw_image.setter
     def receive_raw_image(self, ros_msg: Image):
-        self.raw_image = ros_msg
+        self.received_new[self.image_subscriber.topic] = True
+        self._raw_image = ros_msg
 
+    # @property
+    # def telemetry(self) -> Telemetry:
+    #     self.received_new[self.telemetry_subscriber.topic] = False
+    #     return self._telemetry
+
+    # @telemetry.setter
     # def receive_telemetry(self, ros_msg: Telemetry):
-    #     self.telemetry = ros_msg
+        # self.received_new[self.telemetry_subscriber.topic] = True
+    #     self._telemetry = ros_msg
 
+    @property
+    def raw_grasp(self) -> PoseStamped:
+        self.received_new[self.grasp_subscriber.topic] = False
+        return self._raw_grasp
+
+    @raw_grasp.setter
     def receive_grasp(self, ros_msg: PoseStamped):
-        self.raw_grasp = ros_msg
+        self.received_new[self.grasp_subscriber.topic] = True
+        self._raw_grasp = ros_msg
 
+    # @property
+    # def arm_status(self) -> DynaArmStatus:
+    #     self.received_new[self.arm_status_subscriber.topic] = False
+    #     return self._arm_status
+    
+    # @arm_status.setter
     # def receive_arm_status(self, ros_msg: DynaArmStatus):
-    #     self.arm_status = ros_msg
+    #     self.received_new[self.arm_status_subscriber.topic] = True
+    #     self._arm_status = ros_msg
 
+    def publish_helper(self, publisher, message):
+        # PUBLISHER HELPER SO WE DON"T PUBLISH DUPLICATE MESSAGES
 
+        # ONLY PASS IF THE MESSAGE IS THE SAME 
+        # ROS MESSAGES ARE SET UP TO BE EQUAL IF HEADERS+CONTENT ARE IDENTICAL
+        if self.is_new(publisher.topic, message):
+            # DEBUG REPORTS ALL OUTGOING MESSAGES
+
+            # Node name, topic, message, extra debug info (if present)
+            self.debug_info(self.debug_publish, f"Topic - {publisher.topic}\tMessage - {message}")
+
+            publisher.publish(message)
+            self.lastSentMessages[publisher.topic] = message
+
+    def is_outgoing_new_msg(self, topic, message):
+        # RETURNS TRUE IF THIS IS A NEW OUTGOING MESSAGE
+        return not (topic in self.lastSentMessages 
+                    and self.lastSentMessages[topic] != message)
+    
+    def is_new_data_from_subscriber(self, subscriber):
+        # RETURNS TRUE IF THERE WAS A NEW MESSAGE RECEIVED ON THIS SUBSCRIBER
+        return self.received_new[subscriber.topic]
+
+    def debug(self, if_debug, string):
+        if if_debug:
+            # Node name, topic, message, extra debug info (if present)
+            self.get_logger().info(string)
 
     # define vars
 
@@ -121,28 +218,28 @@ class TaskManagerNode(Node):
 
 
     def hold(self):  
-        droneHover()
+        self.droneHover()
         
         # listen for desiredState
         # if there is desiredState, state = desiredState
         if self.desired_state:
-            self.State = desired_state
+            self.State = self.desired_state
             self.desired_state = None
         pass
 
     def grasp(self):
-        droneHover()
+        self.droneHover()
         
-        # calculate grasp
         # check livedetect information
         # if bounding box size is within 'pickup' range AND bounding box centroid is within 'pickup' range
             # execute grasp
+        # calculate grasp
         pass
     
     # -----
     def cam2FLU(self, point):
         # fill in using tf2 funcitionality
-        # TODO - Mark
+        # taylor - get help (or at least a buddy)
         # read the docs
         pass
 
@@ -223,11 +320,11 @@ class TaskManagerNode(Node):
         return [self.lastSetpointNED[0] + offset_ned[0], self.lastSetpointNED[1] + offset_ned[1], self.lastSetpointNED[2] + offset_ned[2]]
 
     def droneHover(self):   
-        sendWaypointNED(self.lastSetpointNED)
+        self.sendWaypointNED(self.lastSetpointNED)
 
     def isInPosNED(self, NEDpoint: list[float, float, float], tolerance: float) -> bool:
         for i in range(len(NEDpoint)):
-            if (NEDpoint(i) - tolerance <= lastSetpointNED(i)) and (lastSetpointNED(i) <= NEDpoint(i) + tolerance):
+            if (NEDpoint(i) - tolerance <= self.lastSetpointNED(i)) and (self.lastSetpointNED(i) <= NEDpoint(i) + tolerance):
                 continue
             else: return False
         
@@ -252,9 +349,9 @@ class TaskManagerNode(Node):
         qy = quat.y
         qz = quat.z
 
-        yaw = atan2(2.0*(qy*qz + qw*qx), qw*qw - qx*qx - qy*qy + qz*qz)
-        pitch = asin(-2.0*(qx*qz - qw*qy))
-        roll = atan2(2.0*(qx*qy + qw*qz), qw*qw + qx*qx - qy*qy - qz*qz)
+        yaw = math.atan2(2.0*(qy*qz + qw*qx), qw*qw - qx*qx - qy*qy + qz*qz)
+        pitch = math.asin(-2.0*(qx*qz - qw*qy))
+        roll = math.atan2(2.0*(qx*qy + qw*qz), qw*qw + qx*qx - qy*qy - qz*qz)
 
         return yaw, pitch, roll
     
@@ -286,8 +383,21 @@ class TaskManagerNode(Node):
     # -----
 
     def processDetection(self):
-        # TODO kay+mark fill in
-        pass
+        if self.is_new_data_from_subscriber(self.detection_subscriber):
+            # DETECTION CONFIDENCE - USEFUL FOR DEBUG
+            probability = self.detection.results[0].score
+            # FULL BOUNDING BOX OF DETECTED OBJECT
+            bounding_box = self.detection.bbox
+
+            self.debug(self.debug_detect, f"Detected object at {bounding_box.center} with probability {probability}")
+
+            # PUBLISH MESSAGE USING HELPER FUNCTION (WITH EXTRA DEBUG TERM FOR DISPLAYING PROBABILITY)
+            self.publish_helper(self.centroid_publisher, bounding_box.center)
+
+            return bounding_box
+        
+        # RETURN FALSE IF NO NEW INFO FROM SUBSCRIBER
+        return False
 
     def processGrasp(self):
         # TODO kay+mark fill in
