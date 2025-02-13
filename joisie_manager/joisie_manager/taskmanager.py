@@ -189,19 +189,19 @@ class TaskManagerNode(Node):
 
         # ONLY PASS IF THE MESSAGE IS THE SAME 
         # ROS MESSAGES ARE SET UP TO BE EQUAL IF HEADERS+CONTENT ARE IDENTICAL
-        if self.is_new(publisher.topic, message):
+        if self.is_outgoing_new_msg(publisher, message):
             # DEBUG REPORTS ALL OUTGOING MESSAGES
 
             # Node name, topic, message, extra debug info (if present)
-            self.debug_info(self.debug_publish, f"Topic - {publisher.topic}\tMessage - {message}")
+            self.debug(self.debug_publish, f"Topic - {publisher.topic}\tMessage - {message}")
 
             publisher.publish(message)
             self.lastSentMessages[publisher.topic] = message
 
-    def is_outgoing_new_msg(self, topic, message):
+    def is_outgoing_new_msg(self, publisher, message):
         # RETURNS TRUE IF THIS IS A NEW OUTGOING MESSAGE
-        return not (topic in self.lastSentMessages 
-                    and self.lastSentMessages[topic] != message)
+        return not (publisher.topic in self.lastSentMessages 
+                    and self.lastSentMessages[publisher.topic] == message)
     
     def is_new_data_from_subscriber(self, subscriber):
         # RETURNS TRUE IF THERE WAS A NEW MESSAGE RECEIVED ON THIS SUBSCRIBER
