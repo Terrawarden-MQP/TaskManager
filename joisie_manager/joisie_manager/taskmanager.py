@@ -239,7 +239,7 @@ class TaskManagerNode(Node):
     # -----
     def cam2FLU(self, point):
         # fill in using tf2 funcitionality
-        # taylor - get help (or at least a buddy)
+        # TODO - mark
         # read the docs
         pass
 
@@ -276,16 +276,6 @@ class TaskManagerNode(Node):
         # if no object is detected for X out of Y LiveDetect messages
             # state = search
         pass
-    
-    def isInPosition(self, FLUpoint: list[float, float, float], tolerance: float) -> bool:
-        """
-        FLUpoint is goal position
-        tolerance is acceptable difference between drone position and given position
-        return TRUE if drone is in position
-        """
-        # does this even need to exist?
-        # because if the drone is in a certain FLU position, that position will be [0,0,0]
-        return
 
     def offsetPointFLU(self, FLUpoint: list[float, float, float], FLUoffset: list[float, float, float]) -> list[float, float, float]:
         """
