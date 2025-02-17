@@ -94,7 +94,7 @@ class TaskManagerNode(Node):
         self._state = State.HOLD
 
         # STORE PREVIOUS MESSAGE SENT PER TOPIC
-        self.lastSentMessages = {}
+        self.last_sent_messages = {}
         self.received_new = {
             self.state_setter_subscriber.topic: False,
             self.image_subscriber.topic: False,
@@ -197,12 +197,12 @@ class TaskManagerNode(Node):
             self.debug(self.debug_publish, f"Topic - {publisher.topic}\tMessage - {message}")
 
             publisher.publish(message)
-            self.lastSentMessages[publisher.topic] = message
+            self.last_sent_messages[publisher.topic] = message
 
     def is_outgoing_new_msg(self, publisher, message):
         # RETURNS TRUE IF THIS IS A NEW OUTGOING MESSAGE
-        return not (publisher.topic in self.lastSentMessages 
-                    and self.lastSentMessages[publisher.topic] == message)
+        return not (publisher.topic in self.last_sent_messages 
+                    and self.last_sent_messages[publisher.topic] == message)
     
     def is_new_data_from_subscriber(self, subscriber):
         # RETURNS TRUE IF THERE WAS A NEW MESSAGE RECEIVED ON THIS SUBSCRIBER
@@ -286,18 +286,16 @@ class TaskManagerNode(Node):
 
     def navigate(self):
         # perform approach sequence
-        CAM_2D = [self.detection.bbox.center.x, self.detection.bbox.center.y]
-        FLU_pos = self.offsetPointFLU(self.cam2FLU(CAM_2D), [0, 0, 0])
-        NED_pos = self.FLU2NED(FLU_pos, self.quaternion2head(self.telemetry.attitude))
-        self.sendWaypointNED(NED_pos)
+        # CAM_2D = [self.detection.bbox.center.x, self.detection.bbox.center.y]
 
-        if (isInPosNED(NED_pos)):
-            # check livedetect information
-            # if bounding box size is within 'pickup' range AND bounding box centroid is within 'pickup' range
-                # state = grasp
-            # if no object is detected for X out of Y LiveDetect messages
-                # state = search
-            pass
+        # returns EITHER a bounding box OR False (if no new info)
+        bbox = self.processDetection()
+        extracted_pt = self.process3Dpt()
+        # if new extracted pt, recalculate approach
+        if extracted_pt:
+            FLU_pos = self.offsetPointFLU(extracted_pt, [0, 0, 0])
+            NED_pos = self.FLU2NED(FLU_pos, self.telemetry.attitude)
+            self.sendWaypointNED(NED_pos)
 
     def offsetPointFLU(self, FLUpoint: list[float, float, float], FLUoffset: list[float, float, float]) -> list[float, float, float]:
         """
@@ -411,15 +409,16 @@ class TaskManagerNode(Node):
         # RETURN FALSE IF NO NEW INFO FROM SUBSCRIBER
         return False
 
+    def process3Dpt(self):
+        # TODO RETURN POSITION OF TARGET
+        pass
+
     def processGrasp(self):
-        # TODO kay+mark fill in
-        # request grasp calculation
+        # TODO PROCESS SIZE + DISTANCE FROM OBJECT
+        
         pass
 
     # -----
-
-
-
 
     def main(self):
         while True:
