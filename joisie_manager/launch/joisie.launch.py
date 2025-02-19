@@ -13,13 +13,15 @@ def generate_launch_description():
         # Task Manager arguments
         DeclareLaunchArgument("image_topic", default_value="image", description="Topic for receiving raw image from camera"),
         DeclareLaunchArgument("detection_topic", default_value="joisie_detection", description="Topic for receiving Detection from LiveDetect Node"),
-        DeclareLaunchArgument("centroid_topic", default_value="joisie_detected_centroid", description="Topic for sending detected object centroid to VBM"),
+        # DeclareLaunchArgument("centroid_topic", default_value="joisie_detected_centroid", description="Topic for sending detected object centroid to VBM"), # SEE coord_topic
         DeclareLaunchArgument("drone_pose_topic", default_value="joisie_target_pose", description="Topic for sending target pose to drone"),
-        DeclareLaunchArgument("vbm_grasp_topic", default_value="joisie_grasp_read", description="Topic for receiving grasp from VBM"),
+        DeclareLaunchArgument("vbm_extract_topic",default_value="joisie_extract_centroid", description="Topic for receiving 3D Point from VBM extract_cluster"),
+        # DeclareLaunchArgument("vbm_grasp_topic", default_value="joisie_grasp_read", description="Topic for receiving grasp from VBM"), # SEE pos_topic
         DeclareLaunchArgument("arm_grasp_topic", default_value="joisie_grasp_send", description="Topic for sending grasp to arm"),
         DeclareLaunchArgument("arm_status_topic", default_value="joisie_arm_status", description="CustomArmMsg from Arm Node"),
         DeclareLaunchArgument("arm_service_topic", default_value="joisie_arm_inrange_service", description="Topic for InRangeOfObj Service Call to Arm Node"),
         DeclareLaunchArgument("state_setter_topic", default_value="joisie_set_state", description="Topic for setting states"),
+        DeclareLaunchArgument("state_topic",default_value="joisie_state",description="Topic to publish task manager state information"),
         # VBM arguments
         DeclareLaunchArgument('log_level', default_value='INFO', description='Log verbosity level'),
         DeclareLaunchArgument('cluster_topic', default_value='/detected_cluster', description='Cluster topic name'),
@@ -50,7 +52,7 @@ def generate_launch_description():
                                3: isotropy index, 4: maximum minimum svd with abs for numeric stability, 5: weighing (1) and (2) equally'),
         DeclareLaunchArgument('variance_neighbors', default_value='4', description='Grasp uncertainty variance neighbors to search'),
         DeclareLaunchArgument('variance_threshold', default_value='0.2', description='Grasp uncertainty variance threshold'),
-        DeclareLaunchArgument('pos_topic', default_value='grasp_pose', description='Grasp pose topic'),
+        DeclareLaunchArgument('pos_topic', default_value='joisie_grasp_read', description='Grasp pose topic'),
         
         # PREVENT CAMERA MESSAGES FROM BEING SENT OVER NETWORK
         ExecuteProcess(
@@ -91,13 +93,15 @@ def generate_launch_description():
             parameters=[{
                 "image_topic": LaunchConfiguration("image_topic"),
                 "detection_topic": LaunchConfiguration("detection_topic"),
-                "centroid_topic": LaunchConfiguration("centroid_topic"),
+                "centroid_topic": LaunchConfiguration("coord_topic"),
                 "drone_pose_topic": LaunchConfiguration("drone_pose_topic"),
-                "vbm_grasp_topic": LaunchConfiguration("vbm_grasp_topic"),
+                "vbm_extract_topic": LaunchConfiguration("vbm_extract_topic"),
+                "vbm_grasp_topic": LaunchConfiguration("pos_topic"),
                 "arm_grasp_topic": LaunchConfiguration("arm_grasp_topic"),
                 "arm_status_topic": LaunchConfiguration("arm_status_topic"),
                 "arm_service_topic": LaunchConfiguration("arm_service_topic"),
                 "state_setter_topic": LaunchConfiguration("state_setter_topic"),
+                "state_topic": LaunchConfiguration("state_topic"),
             }]
         ),
         Node(
@@ -108,6 +112,7 @@ def generate_launch_description():
                 'cluster_topic': LaunchConfiguration('cluster_topic'),
                 'pointcloud_topic': LaunchConfiguration('pointcloud_topic'),
                 'coord_topic': LaunchConfiguration('coord_topic'),
+                'centroid_topic': LaunchConfiguration('vbm_extract_topic'),
                 'camera_info_topic_depth': LaunchConfiguration('camera_info_topic_depth'),
                 'camera_info_topic_color': LaunchConfiguration('camera_info_topic_color'),
                 'camera_depth_topic': LaunchConfiguration('camera_depth_topic'),
@@ -126,6 +131,7 @@ def generate_launch_description():
                 'target_point_tolerance': LaunchConfiguration('target_point_tolerance'),
                 'curvature': LaunchConfiguration('curvature'),
                 'normal_search_radius': LaunchConfiguration('normal_search_radius'),
+                'state_topic': LaunchConfiguration('state_topic',)
             }],
             arguments=['--ros-args', '--log-level', LaunchConfiguration('log_level')]
         ),
