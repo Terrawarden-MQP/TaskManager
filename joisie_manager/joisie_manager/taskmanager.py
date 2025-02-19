@@ -6,7 +6,9 @@ from rclpy.node import Node
 from sensor_msgs.msg import Image
 from std_msgs.msg import String, Boolean, Header
 from vision_msgs.msg import Detection2D
-# TODO add drone telemetry import + publisher + subscriber
+from terrawarden_interfaces.msg import DroneTelemetry
+from terrawarden_interfaces.msg import DroneWaypoint
+# TODO add drone telemetry publisher + subscriber
 from geometry_msgs.msg import Pose2D, Point, PoseWithCovariance, PoseStamped
 import tf2_ros
 import transformations
@@ -17,6 +19,18 @@ import os
 import math
 
 from enum import Enum, auto
+
+# drone parameter dictionary
+drone_params = {
+    "fast_max_lin_vel_m_s": 8,
+    "fast_max_ang_vel_deg_s": 90,
+    "fast_max_lin_accel_m_s2": 1,
+    "fast_max_z_vel_m_s": 2,
+    "precision_max_lin_vel_m_s": 2,
+    "precision_max_ang_vel_deg_s": 30,
+    "precision_max_lin_accel_m_s2": 0.5,
+    "precision_max_z_vel_m_s": 0.5,
+}
 
 class State(Enum):
     HOLD = auto()
@@ -72,7 +86,7 @@ class TaskManagerNode(Node):
         #                                             self.get_parameter('arm_status_topic').value, 
         #                                             self.receive_grasp, 10)
 
-        self.drone_publisher = self.create_publisher(PoseStamped, 
+        self.drone_publisher = self.create_publisher(DroneWaypoint, 
                                                     self.get_parameter('drone_pose_topic').value, 10)
         self.centroid_publisher = self.create_publisher(Pose2D, 
                                                     self.get_parameter('centroid_topic').value, 10)
@@ -244,7 +258,7 @@ class TaskManagerNode(Node):
         # read the docs
         pass
 
-    def sendWaypointNED(self, NEDpoint: list[float, float, float], heading=None):
+    def sendWaypointNED(self, NEDpoint: list[float, float, float], heading:float=None, max_ang_vel_deg_s:float=None, max_lin_vel_m_s:float=None, max_z_vel_m_s:float=None, max_lin_accel_m_s2:float=None):
         """
         NEDpoint is the waypoiont to send to the drone in [N,E,D] format
         heading is OPTIONAL, and is the yaw
@@ -253,29 +267,46 @@ class TaskManagerNode(Node):
         
         # keep the current heading if not given
         if not heading:
-            heading = self.telemetry.attitude
-            # heading = self.quaternion2head(heading)      
-               
+            heading = self.telemetry.heading_degrees                      
         
         # send waypoint by creating a PoseStamped message
-        waypoint_msg = PoseStamped()
+        waypoint_msg = DroneWaypoint()
         header = Header()
         header.stamp = self.get_clock().now().to_msg()
         header.frame_id = "droneNED"  # Replace with your desired frame ID
         waypoint_msg.header = header
 
-        # Set the pose data (example values)
-        waypoint_msg.pose.position.x = NEDpoint(0)
-        waypoint_msg.pose.position.y = NEDpoint(1)
-        waypoint_msg.pose.position.z = NEDpoint(2)
-        waypoint_msg.pose.orientation.x = heading.x
-        waypoint_msg.pose.orientation.y = heading.y
-        waypoint_msg.pose.orientation.z = heading.z
-        waypoint_msg.pose.orientation.w = heading.w
+        # Set the pose data 
+        waypoint_msg.ned_pos.x = NEDpoint(0)
+        waypoint_msg.ned_pos.y = NEDpoint(1)
+        waypoint_msg.ned_pos.z = NEDpoint(2)
+        if heading:
+            waypoint_msg.heading_degrees = heading
+        else:
+            waypoint_msg.heading_degrees = self.telemetry.heading_degrees
 
-        self.drone_publisher.publish(waypoint_msg)
-                
-        pass
+        # Set the velocity and acceleration data
+        if max_ang_vel_deg_s:
+            waypoint_msg.max_ang_vel_deg_s = max_ang_vel_deg_s
+        else:
+            waypoint_msg.max_ang_vel_deg_s = drone_params["slow_max_ang_vel_deg_s"]
+        
+        if max_lin_vel_m_s:
+            waypoint_msg.max_lin_vel_m_s = max_lin_vel_m_s
+        else:
+            waypoint_msg.max_lin_vel_m_s = drone_params["slow_max_lin_vel_m_s"]
+            
+        if max_z_vel_m_s:
+            waypoint_msg.max_z_vel_m_s = max_z_vel_m_s
+        else:
+            waypoint_msg.max_z_vel_m_s = drone_params["slow_max_z_vel_m_s"]
+            
+        if max_lin_accel_m_s2:
+            waypoint_msg.max_lin_accel_m_s2 = max_lin_accel_m_s2
+        else:
+            waypoint_msg.max_lin_accel_m_s2 = drone_params["slow_max_lin_accel_m_s2"]     
+
+        self.drone_publisher.publish(waypoint_msg)            
     
     def search(self):
         # move drone to next position in search pattern
