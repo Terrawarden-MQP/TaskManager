@@ -183,11 +183,11 @@ class TaskManagerNode(Node):
         self._raw_image = ros_msg
 
     @property
-    def _telemetry(self) -> DroneTelemetry:
+    def telemetry(self) -> DroneTelemetry:
         self.received_new[self.telemetry_subscriber.topic] = False
         return self._telemetry
 
-    @_telemetry.setter
+    @telemetry.setter
     def receive_telemetry(self, ros_msg: DroneTelemetry):
         self.received_new[self.telemetry_subscriber.topic] = True
         self._telemetry = ros_msg
@@ -277,11 +277,7 @@ class TaskManagerNode(Node):
         NEDpoint is the waypoiont to send to the drone in [N,E,D] format
         heading is OPTIONAL, speeds if not specified are left at precision (slow)
         """
-        # give drone NED coordinate to navigate to
-        
-        # keep the current heading if not given
-        if not heading:
-            heading = self._telemetry.heading_degrees                      
+        # give drone NED coordinate to navigate to    
         
         # send waypoint by creating a PoseStamped message
         waypoint_msg = DroneWaypoint()
@@ -294,10 +290,11 @@ class TaskManagerNode(Node):
         waypoint_msg.ned_pos.x = NEDpoint[0]
         waypoint_msg.ned_pos.y = NEDpoint[1]
         waypoint_msg.ned_pos.z = NEDpoint[2]
+        
         if heading:
             waypoint_msg.heading_degrees = heading
         else:
-            waypoint_msg.heading_degrees = self._telemetry.heading_degrees
+            waypoint_msg.heading_degrees = self.telemetry.heading_degrees
 
         # Set the velocity and acceleration data
         if max_ang_vel_deg_s:
@@ -333,7 +330,7 @@ class TaskManagerNode(Node):
         # init
         if self.search_start_time is None:
             self.search_start_time = self.get_clock().now()
-            self.search_start_heading = self._telemetry.heading_degrees
+            self.search_start_heading = self.telemetry.heading_degrees
             self.debug(self.debug_drone, "Starting search pattern")
 
         # desired heading based on elapsed time
@@ -371,7 +368,7 @@ class TaskManagerNode(Node):
 
             # convert that 3d point to a NED point
             FLU_pos = self.offsetPointFLU(self.extract_pt, [-0.5, 0, 0.5])
-            NED_pos = self.FLU2NED(FLU_pos, self.telemetry.attitude)
+            NED_pos = self.FLU2NED(FLU_pos)
             self.sendWaypointNED(NED_pos, self.drone_params["precision_max_ang_vel_deg_s"], self.drone_params["precision_max_lin_vel_m_s"], self.drone_params["precision_max_z_vel_m_s"], self.drone_params["precision_max_lin_accel_m_s2"])    
 
             # If the new waypoint is within a certain distance of the robot, switch to grasping state
@@ -391,11 +388,14 @@ class TaskManagerNode(Node):
         # calculate where drone needs to be to be within X range of a point,
         return [FLUpoint[0] + FLUoffset[0], FLUpoint[1] + FLUoffset[1], FLUpoint[2] + FLUoffset[2]]
 
-    def FLU2NED(self, FLUoffsetPoint: list[float, float, float], heading_deg) -> list[float, float, float]:
+    def FLU2NED(self, FLUoffsetPoint: list[float, float, float], heading_deg: float = None) -> list[float, float, float]:
     
         """Convert a local FLU offset in meters to NED coordinates
         yaw is Heading in degrees 0 to 360
         Returns the offset in NED, not the global NED"""
+
+        if heading_deg is None:
+            heading_deg = self.telemetry.heading_degrees
 
         # convert yaw to radians
         yaw_rad = heading_deg * (math.pi/180)   
