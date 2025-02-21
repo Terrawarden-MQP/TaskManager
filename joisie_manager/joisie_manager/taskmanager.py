@@ -327,16 +327,20 @@ class TaskManagerNode(Node):
     def search(self):
         # move drone to next position in search pattern
         # just slowly spin for now
+        newPosition = self.lastSetpointNED
+        newPosition.heading = self.lastSetpointNED.heading
         # if new/different data from LiveDetect
             # state = navigate
         pass # TODO
 
     def navigate(self):
-        # perform approach sequence
-        # CAM_2D = [self.detection.bbox.center.x, self.detection.bbox.center.y]
+        """Perform approach sequence
+        no inputs, no outputs
+        """
 
         # returns EITHER a bounding box OR False (if no new info)
         bbox = self.processDetection()
+        
         # if new extracted pt, recalculate approach
         if self.is_new_data_from_subscriber(self.extract_subscriber):
             FLU_pos = self.offsetPointFLU(self.extract_pt, [-0.5, 0, 0.5])
@@ -448,6 +452,9 @@ class TaskManagerNode(Node):
 
     # Checks for detected object, publishes 2D point, triggers extracting 3D point from VBM (and 3D grasp pose depending on state)
     def processDetection(self):
+        """returns 3d point if new information is recieved from subscriber
+        returns false if no new information
+        """
         if self.is_new_data_from_subscriber(self.detection_subscriber):
             # DETECTION CONFIDENCE - USEFUL FOR DEBUG
             probability = self.detection.results[0].score
@@ -467,6 +474,13 @@ class TaskManagerNode(Node):
     # -----
 
     def main(self):
+
+        # ideal test 2/21: 
+            # test hold state, check that it moves to a desired state when recieving message
+            # test navigate state
+            # make + test basic search state (spin until see something)
+
+
         while True:
 
             # Publish current state
