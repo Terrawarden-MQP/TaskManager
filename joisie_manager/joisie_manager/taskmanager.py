@@ -23,11 +23,11 @@ from enum import Enum, auto
 
 
 class State(Enum):
-    HOLD = "hold"
-    SEARCHING = "searching"
-    NAVIGATING = "navigating"
-    GRASPING = "grasping"
-    DEPOSITING = "depositing"
+    HOLD = "HOLD"
+    SEARCHING = "SEARCH"
+    NAVIGATING = "NAV"
+    GRASPING = "GRASP"
+    DEPOSITING = "DEPOSIT"
 
 class TaskManagerNode(Node):
 
@@ -52,15 +52,12 @@ class TaskManagerNode(Node):
         self.declare_parameter('drone_telemetry_topic', 'drone/telemetry')
 
         # Topic for receiving raw image from camera # TODO - does the task manager really need this? VBM/Detection can process the point cloud / image directly
+        # NO
         self.declare_parameter('image_topic', 'image')
         # Topic for receiving Detection from LiveDetect Node
         self.declare_parameter('detection_topic', 'joisie_detection')
         # Topic for sending detected object centroid to VBM
         self.declare_parameter('centroid_topic', 'joisie_detected_centroid')
-        # Topic for receiving Telemetry from Drone Node
-        # self.declare_parameter('telemetry', 'joisie_telemetry')
-        # Topic for sending target pose to drone
-        self.declare_parameter('drone_pose_topic', 'joisie_target_pose')
         # Topic for receiving 3D point from VBM extract_cluster
         self.declare_parameter('vbm_extract_topic', 'joisie_extract_centroid')
         # Topic for receiving grasp from VBM optimal_grasp
@@ -71,6 +68,10 @@ class TaskManagerNode(Node):
         self.declare_parameter('arm_status_topic', 'joisie_arm_status')
         # Topic for InRangeOfObj Service Call to Arm Node
         self.declare_parameter('arm_service_topic', 'joisie_arm_inrange_service')
+        # Topic for receiving Telemetry from Drone Node
+        # self.declare_parameter('telemetry', 'joisie_telemetry')
+        # Topic for sending target pose to drone
+        self.declare_parameter('drone_pose_topic', 'joisie_target_pose')
         # Topic to send state information
         self.declare_parameter('state_topic','joisie_state')
 
@@ -158,16 +159,9 @@ class TaskManagerNode(Node):
     
     def receive_desired_state(self, ros_msg: String):
         self.received_new[self.state_setter_subscriber.topic] = True
-        bindings = {
-            "HOLD": State.HOLD,
-            "SEARCH": State.SEARCHING,
-            "NAV": State.NAVIGATING,
-            "GRASP": State.GRASPING,
-            "DEPOSIT": State.DEPOSITING
-        }
         try:
             string = ros_msg.data
-            self.state = bindings[string.upper()]
+            self.state = State(string)
         except:
             print("No matching state for string:", string)
 
@@ -266,22 +260,18 @@ class TaskManagerNode(Node):
 
     def hold(self):  
         self.droneHover()
-        
-        # listen for desiredState
-        # if there is desiredState, state = desiredState
-        # if self.desired_state:
-        #     self.State = self.desired_state
-        #     self.desired_state = None
-        pass # TODO
+        # listening for desired state happens async from this'
+
+        return State.HOLD
 
     def grasp(self):
-        self.droneHover() # TODO - this should be a continuation of processDetect and use the pose in raw_grasp to move the arm
+        self.droneHover()
         
         # check livedetect information
         # if bounding box size is within 'pickup' range AND bounding box centroid is within 'pickup' range
             # execute grasp
         # calculate grasp
-        pass
+        return State.GRASPING # TODO
     
     # -----
 
@@ -333,7 +323,8 @@ class TaskManagerNode(Node):
         else:
             waypoint_msg.max_lin_accel_m_s2 = self.drone_params["precision_max_lin_accel_m_s2"]     
     
-        self.drone_publisher.publish(waypoint_msg)            
+        self.drone_publisher.publish(waypoint_msg)  
+        self.lastSetpointNED = waypoint_msg          
     
     def search(self):
         # move drone to next position in search pattern
@@ -372,24 +363,24 @@ class TaskManagerNode(Node):
         return State.SEARCHING
 
     def navigate(self):
-        # perform approach sequence
-        # CAM_2D = [self.detection.bbox.center.x, self.detection.bbox.center.y]
+        """Perform approach sequence
+        no inputs, no outputs
+        """
 
         # returns EITHER a bounding box OR False (if no new info)
         bbox = self.processDetection()
+        
         # if new extracted pt, recalculate approach
         if self.is_new_data_from_subscriber(self.extract_subscriber):
-            FLU_pos = self.offsetPointFLU(self.extract_pt, [0, 0, 0])
-            NED_pos = self.FLU2NED(FLU_pos, self._telemetry.heading_degrees)
-            self.sendWaypointNED(NED_pos)
+            FLU_pos = self.offsetPointFLU(self.extract_pt, [-0.5, 0, 0.5])
+            NED_pos = self.FLU2NED(FLU_pos, self.telemetry.attitude)
+            self.sendWaypointNED(NED_pos, self.precision_max_ang_vel_deg_s, self.precision_max_lin_vel_m_s, self.precision_max_z_vel_m_s, self.precision_max_lin_accel_m_s2)
 
             # If the new waypoint is within a certain distance of the robot, switch to grasping
-            if math.hypot(FLU_pos[0],FLU_pos[1],FLU_pos[2]) < 1: # TODO make this a ROS arg
+            if math.hypot(FLU_pos[0],FLU_pos[1],FLU_pos[2]) < 0.75: # TODO make this a ROS arg
                 return State.GRASPING
-            else:
-                return State.NAVIGATING
-        else:
-            return State.NAVIGATING
+        # Return current state
+        return State.NAVIGATING
 
     def offsetPointFLU(self, FLUpoint: list[float, float, float], FLUoffset: list[float, float, float]) -> list[float, float, float]:
         """
@@ -477,17 +468,20 @@ class TaskManagerNode(Node):
     def deposit(self):
         # drops the object
         #  pass this for now
-        pass # TODO
+        return State.DEPOSITING # TODO
 
     def checkForErrors(self):
         # Read most recent Telemetry and ArmStatus data
         # Set mode to State.HOLD if any errors
-        pass # TODO
+        return False # TODO
 
     # -----
 
     # Checks for detected object, publishes 2D point, triggers extracting 3D point from VBM (and 3D grasp pose depending on state)
     def processDetection(self):
+        """returns 3d point if new information is recieved from subscriber
+        returns false if no new information
+        """
         if self.is_new_data_from_subscriber(self.detection_subscriber):
             # DETECTION CONFIDENCE - USEFUL FOR DEBUG
             probability = self.detection.results[0].score
@@ -508,6 +502,13 @@ class TaskManagerNode(Node):
     # -----
 
     def main(self):
+
+        # ideal test 2/21: 
+            # test hold state, check that it moves to a desired state when recieving message
+            # test navigate state
+            # make + test basic search state (spin until see something)
+
+
         while True:
 
             # Publish current state
@@ -518,15 +519,10 @@ class TaskManagerNode(Node):
             if self.state == State.HOLD:
                 new_state = self.hold()
             elif self.state == State.SEARCHING:
-                # self.process_detection()
                 new_state = self.search()
             elif self.state == State.NAVIGATING:
-                # self.process_detection()
-                # self.process_grasp()
                 new_state = self.navigate()
             elif self.state == State.GRASPING:
-                # self.process_detection()
-                # self.process_grasp()
                 new_state = self.grasp()
             elif self.state == State.DEPOSITING:
                 new_state = self.deposit()

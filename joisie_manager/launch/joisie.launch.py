@@ -16,7 +16,8 @@ def generate_launch_description():
         # DeclareLaunchArgument("centroid_topic", default_value="joisie_detected_centroid", description="Topic for sending detected object centroid to VBM"), # SEE coord_topic
         DeclareLaunchArgument("drone_pose_topic", default_value="joisie_target_pose", description="Topic for sending target pose to drone"),
         DeclareLaunchArgument("vbm_extract_topic",default_value="joisie_extract_centroid", description="Topic for receiving 3D Point from VBM extract_cluster"),
-        # DeclareLaunchArgument("vbm_grasp_topic", default_value="joisie_grasp_read", description="Topic for receiving grasp from VBM"), # SEE pos_topic
+        DeclareLaunchArgument("vbm_grasp_topic", default_value="joisie_grasp_read", description="Topic for receiving grasp from VBM"), # SEE pos_topic
+        # DeclareLaunchArgument('pos_topic', default_value='joisie_grasp_read', description='Grasp pose topic'),
         DeclareLaunchArgument("arm_grasp_topic", default_value="joisie_grasp_send", description="Topic for sending grasp to arm"),
         DeclareLaunchArgument("arm_status_topic", default_value="joisie_arm_status", description="CustomArmMsg from Arm Node"),
         DeclareLaunchArgument("arm_service_topic", default_value="joisie_arm_inrange_service", description="Topic for InRangeOfObj Service Call to Arm Node"),
@@ -52,7 +53,6 @@ def generate_launch_description():
                                3: isotropy index, 4: maximum minimum svd with abs for numeric stability, 5: weighing (1) and (2) equally'),
         DeclareLaunchArgument('variance_neighbors', default_value='4', description='Grasp uncertainty variance neighbors to search'),
         DeclareLaunchArgument('variance_threshold', default_value='0.2', description='Grasp uncertainty variance threshold'),
-        DeclareLaunchArgument('pos_topic', default_value='joisie_grasp_read', description='Grasp pose topic'),
         
         # PREVENT CAMERA MESSAGES FROM BEING SENT OVER NETWORK
         ExecuteProcess(
@@ -148,7 +148,7 @@ def generate_launch_description():
                 'select_stability_metric': LaunchConfiguration('select_stability_metric'),
                 'variance_neighbors': LaunchConfiguration('variance_neighbors'),
                 'variance_threshold': LaunchConfiguration('variance_threshold'),
-                'pos_topic': LaunchConfiguration('pos_topic'),
+                'pos_topic': LaunchConfiguration('vbm_grasp_topic'),
             }],
             arguments=['--ros-args', '--log-level', LaunchConfiguration('log_level')]
         ),
