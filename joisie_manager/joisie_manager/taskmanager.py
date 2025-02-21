@@ -367,19 +367,25 @@ class TaskManagerNode(Node):
         no inputs, no outputs
         """
 
-        # returns EITHER a bounding box OR False (if no new info)
-        bbox = self.processDetection()
+        # # OPTIONAL: this would be used to make decisions based on when there's new 2d data
+        # bbox = self.processDetection()
         
         # if new extracted pt, recalculate approach
         if self.is_new_data_from_subscriber(self.extract_subscriber):
+
+            # convert that 3d point to a NED point
             FLU_pos = self.offsetPointFLU(self.extract_pt, [-0.5, 0, 0.5])
             NED_pos = self.FLU2NED(FLU_pos, self.telemetry.attitude)
             self.sendWaypointNED(NED_pos, self.precision_max_ang_vel_deg_s, self.precision_max_lin_vel_m_s, self.precision_max_z_vel_m_s, self.precision_max_lin_accel_m_s2)
 
-            # If the new waypoint is within a certain distance of the robot, switch to grasping
+            # send NED point to drone as waypoint
+            self.sendWaypointNED(NED_pos, self.slow_max_ang_vel_deg_s, self.slow_max_lin_vel_m_s, self.slow_max_z_vel_m_s, self.slow_max_lin_accel_m_s2)
+
+            # If the new waypoint is within a certain distance of the robot, switch to grasping state
             if math.hypot(FLU_pos[0],FLU_pos[1],FLU_pos[2]) < 0.75: # TODO make this a ROS arg
                 return State.GRASPING
-        # Return current state
+
+        # stay in navigation state
         return State.NAVIGATING
 
     def offsetPointFLU(self, FLUpoint: list[float, float, float], FLUoffset: list[float, float, float]) -> list[float, float, float]:
@@ -399,9 +405,12 @@ class TaskManagerNode(Node):
         # fill in using tf2 funcitionality
         # taylor + jakub
         # take in a local offset in meters and a yaw in degrees, convert to the NED frame, and return the NED coordinates
+    def FLU2NED(self, FLUoffsetPoint: list[float, float, float], yaw) -> list[float, float, float]:
     
         """Convert a local FLU offset in meters to NED coordinates
+        yaw is Heading in degrees 0 to 360
         Returns the offset in NED, not the global NED"""
+
         # convert yaw to radians
         yaw_rad = heading_deg * (math.pi/180)   
         
@@ -412,12 +421,21 @@ class TaskManagerNode(Node):
         
         # convert to NED coordinates
         offset_ned = [rotated_flu_x, rotated_flu_y, -rotated_flu_z]  
+
         return [self.lastSetpointNED[0] + offset_ned[0], self.lastSetpointNED[1] + offset_ned[1], self.lastSetpointNED[2] + offset_ned[2]]
 
     def droneHover(self):   
+        """
+        sends last waypoint to drone as new waypoint, essentially tells it to stay where it is
+        """
         self.sendWaypointNED(self.lastSetpointNED)
 
     def isInPosNED(self, NEDpoint: list[float, float, float], tolerance: float) -> bool:
+        """
+        returns true if drone's location is at given NEDpoint plus or minus given tolerance
+        otherwise returns false
+        """
+
         for i in range(len(NEDpoint)):
             if (NEDpoint[i] - tolerance <= self.lastSetpointNED[i]) and (self.lastSetpointNED [i] <= NEDpoint[i] + tolerance):
                 continue
