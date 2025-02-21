@@ -11,15 +11,11 @@ from terrawarden_interfaces.msg import DroneWaypoint
 from geometry_msgs.msg import Pose2D, Point, PoseWithCovariance, PoseStamped
 import tf2_ros
 import transformations
-
 import cv2
 import numpy as np
 import os
 import math
-
 from enum import Enum, auto
-
-
 
 class State(Enum):
     HOLD = "HOLD"
@@ -76,27 +72,39 @@ class TaskManagerNode(Node):
 
         self.declare_parameter('state_setter_topic', 'joisie_set_state')
 
+        # -----
+        # SUBSCRIBERS
+
         self.state_setter_subscriber = self.create_subscription(String, 
                                             self.get_parameter('state_setter_topic').value, 
                                             self.receive_desired_state, 10)
+        
         self.image_subscriber = self.create_subscription(Image, 
                                                     self.get_parameter('image_topic').value, 
                                                     self.receive_raw_image, 10)
+        
         self.detection_subscriber = self.create_subscription(Detection2D, 
                                                     self.get_parameter('detection_topic').value, 
                                                     self.receive_detection, 10)
+        
         self.telemetry_subscriber = self.create_subscription(DroneTelemetry, 
                                                     self.get_parameter('drone_telemetry_topic').value, 
                                                     self.receive_telemetry, 10)
+        
         self.extract_subscriber = self.create_subscription(Point,
                                                     self.get_parameter('vbm_extract_topic').value,
                                                     self.receive_extract_pt, 10)
+        
         self.grasp_subscriber = self.create_subscription(PoseStamped,
                                                     self.get_parameter('vbm_grasp_topic').value, 
                                                     self.receive_grasp, 10)
+
         # self.arm_status_subscriber = self.create_subscription(DynaArmStatus, 
         #                                             self.get_parameter('arm_status_topic').value, 
         #                                             self.receive_grasp, 10)
+
+        # -----
+        # PUBLISHERS
 
         self.drone_publisher = self.create_publisher(DroneWaypoint, 
                                                     self.get_parameter('drone_pose_topic').value, 10)
@@ -107,7 +115,12 @@ class TaskManagerNode(Node):
         self.state_publisher = self.create_publisher(String,
                                                     self.get_parameter('state_topic').value, 10)
 
+        # -----
+        # SERVICES
+
         self.in_range_service = self.create_client(Boolean, self.get_parameter('arm_grasp_topic').value)
+
+        # -----
 
 
         self.declare_parameter('debug', '0b00000')
@@ -142,6 +155,9 @@ class TaskManagerNode(Node):
     #### NEW INFORMATION HAS / HASN'T BEEN ACCESSED
     #
 
+    # -----
+# PROPERTIES
+
     @property
     def state(self) -> State:
         self.received_new[self.state_setter_subscriber.topic] = False
@@ -172,6 +188,7 @@ class TaskManagerNode(Node):
         self.received_new[self.detection_subscriber.topic] = True
         self._detection = ros_msg
 
+
     @property
     def raw_image(self) -> Image:
         self.received_new[self.image_subscriber.topic] = False
@@ -181,6 +198,7 @@ class TaskManagerNode(Node):
     def receive_raw_image(self, ros_msg: Image):
         self.received_new[self.image_subscriber.topic] = True
         self._raw_image = ros_msg
+
 
     @property
     def telemetry(self) -> DroneTelemetry:
@@ -192,6 +210,7 @@ class TaskManagerNode(Node):
         self.received_new[self.telemetry_subscriber.topic] = True
         self._telemetry = ros_msg
 
+
     @property
     def raw_grasp(self) -> PoseStamped:
         self.received_new[self.grasp_subscriber.topic] = False
@@ -201,6 +220,7 @@ class TaskManagerNode(Node):
     def receive_grasp(self, ros_msg: PoseStamped):
         self.received_new[self.grasp_subscriber.topic] = True
         self._raw_grasp = ros_msg
+
 
     @property
     def extract_pt(self) -> Point:
@@ -212,6 +232,7 @@ class TaskManagerNode(Node):
         self.received_new[self.extract_subscriber.topic] = True
         self._extract_pt = ros_msg
 
+
     # @property
     # def arm_status(self) -> DynaArmStatus:
     #     self.received_new[self.arm_status_subscriber.topic] = False
@@ -222,11 +243,13 @@ class TaskManagerNode(Node):
     #     self.received_new[self.arm_status_subscriber.topic] = True
     #     self._arm_status = ros_msg
 
-    def publish_helper(self, publisher, message):
-        # PUBLISHER HELPER SO WE DON"T PUBLISH DUPLICATE MESSAGES
+    # ----- HELPER FNs
 
-        # ONLY PASS IF THE MESSAGE IS THE SAME 
-        # ROS MESSAGES ARE SET UP TO BE EQUAL IF HEADERS+CONTENT ARE IDENTICAL
+    def publish_helper(self, publisher, message):
+        """PUBLISHER HELPER SO WE DON"T PUBLISH DUPLICATE MESSAGES
+        ONLY PASS IF THE MESSAGE IS THE SAME 
+        ROS MESSAGES ARE SET UP TO BE EQUAL IF HEADERS+CONTENT ARE IDENTICAL"""
+
         if self.is_outgoing_new_msg(publisher, message):
             # DEBUG REPORTS ALL OUTGOING MESSAGES
 
@@ -237,12 +260,12 @@ class TaskManagerNode(Node):
             self.last_sent_messages[publisher.topic] = message
 
     def is_outgoing_new_msg(self, publisher, message):
-        # RETURNS TRUE IF THIS IS A NEW OUTGOING MESSAGE
+        '''RETURNS TRUE IF THIS IS A NEW OUTGOING MESSAGE'''
         return not (publisher.topic in self.last_sent_messages 
                     and self.last_sent_messages[publisher.topic] == message)
     
     def is_new_data_from_subscriber(self, subscriber):
-        # RETURNS TRUE IF THERE WAS A NEW MESSAGE RECEIVED ON THIS SUBSCRIBER
+        '''RETURNS TRUE IF THERE WAS A NEW MESSAGE RECEIVED ON THIS SUBSCRIBER'''
         return self.received_new[subscriber.topic]
 
     def debug(self, if_debug, string):
@@ -250,16 +273,15 @@ class TaskManagerNode(Node):
             # Node name, topic, message, extra debug info (if present)
             self.get_logger().info(string)
 
-    # define vars
-
-    # -----
-
+    # ----- HOLD
 
     def hold(self):  
         self.droneHover()
         # listening for desired state happens async from this'
 
         return State.HOLD
+
+    # ----- GRASP
 
     def grasp(self):
         self.droneHover()
@@ -270,11 +292,11 @@ class TaskManagerNode(Node):
         # calculate grasp
         return State.GRASPING # TODO
     
-    # -----
+    # ----- DRONE HELPERS
 
-    def sendWaypointNED(self, NEDpoint: list[float, float, float], heading:float=None, max_ang_vel_deg_s:float=None, max_lin_vel_m_s:float=None, max_z_vel_m_s:float=None, max_lin_accel_m_s2:float=None):
+    def sendWaypointNED(self, NEDpoint: Point, heading:float=None, max_ang_vel_deg_s:float=None, max_lin_vel_m_s:float=None, max_z_vel_m_s:float=None, max_lin_accel_m_s2:float=None):
         """
-        NEDpoint is the waypoiont to send to the drone in [N,E,D] format
+        NEDpoint is the waypoint to send to the drone in [N,E,D] format
         heading is OPTIONAL, speeds if not specified are left at precision (slow)
         """
         # give drone NED coordinate to navigate to    
@@ -287,9 +309,7 @@ class TaskManagerNode(Node):
         waypoint_msg.header = header
 
         # Set the pose data 
-        waypoint_msg.ned_pos.x = NEDpoint[0]
-        waypoint_msg.ned_pos.y = NEDpoint[1]
-        waypoint_msg.ned_pos.z = NEDpoint[2]
+        waypoint_msg.ned_pos = NEDpoint
         
         if heading:
             waypoint_msg.heading_degrees = heading
@@ -319,76 +339,17 @@ class TaskManagerNode(Node):
     
         self.drone_publisher.publish(waypoint_msg)   
     
-    def search(self):
-        # move drone to next position in search pattern
-        # TODO - make this a real search pattern
-                
-        # just slowly spin for now, slowly
-        rpm = 2.0    
-        degrees_per_second = rpm * 360.0 / 60.0
-
-        # init
-        if self.search_start_time is None:
-            self.search_start_time = self.get_clock().now()
-            self.search_start_heading = self.telemetry.heading_degrees
-            self.debug(self.debug_drone, "Starting search pattern")
-
-        # desired heading based on elapsed time
-        current_time = self.get_clock().now()
-        elapsed = (current_time - self.search_start_time).nanoseconds / 1e9
-        desired_heading = (self.search_start_heading + elapsed * degrees_per_second) % 360.0
-
-        # send waypoint maintaining position but rotating
-        self.sendWaypointNED(
-            [self.last_sent_messages[self.drone_publisher.topic].ned_pos.x,
-             self.last_sent_messages[self.drone_publisher.topic].ned_pos.y,
-             self.last_sent_messages[self.drone_publisher.topic].ned_pos.z],     
-            heading=desired_heading,
-            max_ang_vel_deg_s=degrees_per_second * 1.2  # 20% for smoothness
-        )
-
-        # detection found, transition states
-        if self.is_new_data_from_subscriber(self.detection_subscriber):
-            self.search_start_time = None   # reset search timer
-            self.search_start_heading = None
-            return State.NAVIGATING
-        
-        return State.SEARCHING
-
-    def navigate(self):
-        """Perform approach sequence
-        no inputs, no outputs
-        """
-
-        # # OPTIONAL: this would be used to make decisions based on when there's new 2d data
-        # bbox = self.processDetection()
-        
-        # if new extracted pt, recalculate approach
-        if self.is_new_data_from_subscriber(self.extract_subscriber):
-
-            # convert that 3d point to a NED point
-            FLU_pos = self.offsetPointFLU(self.extract_pt, [-0.5, 0, 0.5])
-            NED_pos = self.FLU2NED(FLU_pos)
-            self.sendWaypointNED(NED_pos, self.drone_params["precision_max_ang_vel_deg_s"], self.drone_params["precision_max_lin_vel_m_s"], self.drone_params["precision_max_z_vel_m_s"], self.drone_params["precision_max_lin_accel_m_s2"])    
-
-            # If the new waypoint is within a certain distance of the robot, switch to grasping state
-            if math.hypot(FLU_pos[0],FLU_pos[1],FLU_pos[2]) < 0.75: # TODO make this a ROS arg
-                return State.GRASPING
-
-        # stay in navigation state
-        return State.NAVIGATING
-
-    def offsetPointFLU(self, FLUpoint: list[float, float, float], FLUoffset: list[float, float, float]) -> list[float, float, float]:
+    
+    def offsetPointFLU(self, FLUpoint: Point, FLUoffset: Point) -> Point:
         """
         Approach the drone to a point in FLU coordinates
         FLU = [forward, left, up] in meters
         FLUoffset = to offset the point in the local FLU drone frame                
         """
         
-        # calculate where drone needs to be to be within X range of a point,
-        return [FLUpoint[0] + FLUoffset[0], FLUpoint[1] + FLUoffset[1], FLUpoint[2] + FLUoffset[2]]
+        return Point(FLUpoint.x + FLUoffset.x, FLUpoint.y + FLUoffset.y, FLUpoint.z + FLUoffset.z)
 
-    def FLU2NED(self, FLUoffsetPoint: list[float, float, float], heading_deg: float = None) -> list[float, float, float]:
+    def FLU2NED(self, FLUoffsetPoint: Point, heading_deg: float = None) -> Point:
     
         """Convert a local FLU offset in meters to NED coordinates
         yaw is Heading in degrees 0 to 360
@@ -401,52 +362,51 @@ class TaskManagerNode(Node):
         yaw_rad = heading_deg * (math.pi/180)   
         
         # convert the offset to rotated FLU
-        rotated_flu_x = FLUoffsetPoint[0] * math.cos(yaw_rad) + FLUoffsetPoint[1] * math.sin(yaw_rad)
-        rotated_flu_y = FLUoffsetPoint[0] * math.sin(yaw_rad) - FLUoffsetPoint[1] * math.cos(yaw_rad)
-        rotated_flu_z = FLUoffsetPoint[2]
+        rotated_flu_x = FLUoffsetPoint.x * math.cos(yaw_rad) + FLUoffsetPoint.y * math.sin(yaw_rad)
+        rotated_flu_y = FLUoffsetPoint.x * math.sin(yaw_rad) - FLUoffsetPoint.y * math.cos(yaw_rad)
+        rotated_flu_z = FLUoffsetPoint.z
         
         # convert to NED coordinates
-        offset_ned = [rotated_flu_x, rotated_flu_y, -rotated_flu_z]  
+        offset_ned = Point(x=rotated_flu_x, y=rotated_flu_y, z=-rotated_flu_z)
         
-        last_X_setpoint = self.last_sent_messages[self.drone_publisher.topic].ned_pos.x
-        last_Y_setpoint = self.last_sent_messages[self.drone_publisher.topic].ned_pos.y
-        last_Z_setpoint = self.last_sent_messages[self.drone_publisher.topic].ned_pos.z
+        last_setpoint = self.last_sent_messages[self.drone_publisher.topic].ned_pos
 
-        return [last_X_setpoint + offset_ned[0], last_Y_setpoint + offset_ned[1], last_Z_setpoint + offset_ned[2]]
+        return Point(last_setpoint.x + offset_ned.x, 
+                    last_setpoint.y + offset_ned.y, 
+                    last_setpoint.z + offset_ned.z)
 
     def droneHover(self):   
         """
-        sends last waypoint to drone as new waypoint, essentially tells it to stay where it is
+        Sends last waypoint to drone as new waypoint, essentially tells it to stay where it is
         """
-        last_X_setpoint = self.last_sent_messages[self.drone_publisher.topic].ned_pos.x
-        last_Y_setpoint = self.last_sent_messages[self.drone_publisher.topic].ned_pos.y
-        last_Z_setpoint = self.last_sent_messages[self.drone_publisher.topic].ned_pos.z
+        last_setpoint = self.last_sent_messages[self.drone_publisher.topic].ned_pos
         
-        self.sendWaypointNED([last_X_setpoint, last_Y_setpoint, last_Z_setpoint])
+        self.sendWaypointNED(Point(last_setpoint.x, last_setpoint.y, last_setpoint.z))
 
-    def isInPosNED(self, NEDpoint: list[float, float, float], toleranceXY: float, toleranceZ: float) -> bool:
+    def isInPosNED(self, NEDpoint: Point, toleranceXY: float, toleranceZ: float) -> bool:
         """
-        returns true if drone's location is at given NEDpoint plus or minus given tolerance
-        otherwise returns false
+        Returns true if drone's location is at given NEDpoint plus or minus given tolerance
+        Otherwise returns false
         """
 
         last_X_setpoint = self.last_sent_messages[self.drone_publisher.topic].ned_pos.x
         last_Y_setpoint = self.last_sent_messages[self.drone_publisher.topic].ned_pos.y
         last_Z_setpoint = self.last_sent_messages[self.drone_publisher.topic].ned_pos.z
         
-        if abs(last_X_setpoint - NEDpoint[0]) > toleranceXY:
+        if abs(last_X_setpoint - NEDpoint.x) > toleranceXY:
             return False
         
-        if abs(last_Y_setpoint - NEDpoint[1]) > toleranceXY:
+        if abs(last_Y_setpoint - NEDpoint.y) > toleranceXY:
             return False
         
-        if abs(last_Z_setpoint - NEDpoint[2]) > toleranceZ:
+        if abs(last_Z_setpoint - NEDpoint.z) > toleranceZ:
             return False
         
         return True
 
     def quaternion2head(self, quat):
-        """Get the equivalent yaw-pitch-roll angles aka. intrinsic Tait-Bryan angles following the z-y'-x'' convention
+        """
+        Get the equivalent yaw-pitch-roll angles aka. intrinsic Tait-Bryan angles following the z-y'-x'' convention
 
         Returns:
             yaw:    rotation angle around the z-axis in radians, in the range `[-pi, pi]`
@@ -471,17 +431,92 @@ class TaskManagerNode(Node):
         return yaw, pitch, roll
     
     def heading_to_px4_yaw(self, heading: float) -> float:
-        """Convert a heading in degrees [0, 360) to a PX4 yaw in radians (-pi, pi]
-        Heading is in degrees, yaw is in radians"""
+        """
+        Convert a heading in degrees [0, 360) to a PX4 yaw in radians (-pi, pi]
+        Heading is in degrees, yaw is in radians
+        """
         heading = heading % 360.0
         if heading > 180.0:
             heading = heading - 360.0
         return heading * (math.pi / 180.0) # heading is backwards 
     
     def px4_yaw_to_heading(self, yaw: float) -> float:
-        """Convert a PX4 yaw in radians (-pi, pi] to a heading in degrees [0, 360)
-        Yaw is in radians, heading is in degrees"""
+        """
+        Convert a PX4 yaw in radians (-pi, pi] to a heading in degrees [0, 360)
+        Yaw is in radians, heading is in degrees
+        """
         return (yaw * (180.0 / math.pi)) % 360.0
+
+    # ----- SEARCH
+
+    def search(self):
+        """
+        Move drone to next position in search pattern
+        No inputs, no outputs
+        """
+        # TODO - make this a real search pattern
+                
+        # just slowly spin for now, slowly
+        rpm = 2.0    
+        degrees_per_second = rpm * 360.0 / 60.0
+
+        # init
+        if self.search_start_time is None:
+            self.search_start_time = self.get_clock().now()
+            self.search_start_heading = self.telemetry.heading_degrees
+            self.debug(self.debug_drone, "Starting search pattern")
+
+        # desired heading based on elapsed time
+        current_time = self.get_clock().now()
+        elapsed = (current_time - self.search_start_time).nanoseconds / 1e9
+        desired_heading = (self.search_start_heading + elapsed * degrees_per_second) % 360.0
+
+        # send waypoint maintaining position but rotating
+        self.sendWaypointNED(
+            self.last_sent_messages[self.drone_publisher.topic].ned_pos,   
+            heading=desired_heading,
+            max_ang_vel_deg_s=degrees_per_second * 1.2  # 20% for smoothness
+        )
+
+        # detection found, transition states
+        if self.is_new_data_from_subscriber(self.detection_subscriber):
+            self.search_start_time = None   # reset search timer
+            self.search_start_heading = None
+            return State.NAVIGATING
+        
+        return State.SEARCHING
+
+    # ----- NAVIGATE
+
+    def navigate(self):
+        """ 
+        Perform approach sequence
+        No inputs, no outputs
+        """
+
+        # # OPTIONAL: this would be used to make decisions based on when there's new 2d data
+        # bbox = self.processDetection()
+        
+        # if new extracted pt, recalculate approach
+        if self.is_new_data_from_subscriber(self.extract_subscriber):
+
+            # convert that 3D point to NED, offset it above and towards the drone a bit
+            FLU_pos = self.offsetPointFLU(self.extract_pt, [-0.5, 0, 0.5])
+            
+            # calculate heading to point to turn towards it
+            px4_yaw_rad = math.atan2(FLU_pos.y, FLU_pos.x) 
+            heading_deg = self.px4_yaw_to_heading(px4_yaw_rad)
+            
+            
+            NED_pos = self.FLU2NED(FLU_pos, heading_deg)
+            self.sendWaypointNED(NED_pos, self.drone_params["precision_max_ang_vel_deg_s"], self.drone_params["precision_max_lin_vel_m_s"], self.drone_params["precision_max_z_vel_m_s"], self.drone_params["precision_max_lin_accel_m_s2"])    
+
+            # if the new waypoint is within a certain distance of the robot, switch to grasping state
+            if self.isInPosNED(NED_pos, 0.5, 0.2):
+                return State.GRASPING
+
+        # stay in navigation state
+        return State.NAVIGATING
 
     # -----
     
@@ -519,7 +554,7 @@ class TaskManagerNode(Node):
         # RETURN FALSE IF NO NEW INFO FROM SUBSCRIBER
         return False
 
-    # -----
+    # ----- MAIN LOOP
 
     def main(self):
 
