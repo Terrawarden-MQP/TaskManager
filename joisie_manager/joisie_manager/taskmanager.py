@@ -502,17 +502,18 @@ class TaskManagerNode(Node):
 
             # convert that 3D point to NED, offset it above and towards the drone a bit
             FLU_pos = self.offsetPointFLU(self.extract_pt, [-0.5, 0, 0.5])
-            
-            # calculate heading to point to turn towards it
-            px4_yaw_rad = math.atan2(FLU_pos.y, FLU_pos.x) 
-            heading_deg = self.px4_yaw_to_heading(px4_yaw_rad)
-            
-            
             NED_pos = self.FLU2NED(FLU_pos, heading_deg)
-            self.sendWaypointNED(NED_pos, self.drone_params["precision_max_ang_vel_deg_s"], self.drone_params["precision_max_lin_vel_m_s"], self.drone_params["precision_max_z_vel_m_s"], self.drone_params["precision_max_lin_accel_m_s2"])    
+                    
+            # calculate heading to point to turn towards it
+            diff_north = NED_pos.x - self.telemetry.ned_pos.x
+            diff_east = NED_pos.y - self.telemetry.ned_pos.y
+            px4_yaw_rad = math.atan2(diff_east, diff_north) 
+            heading_deg = self.px4_yaw_to_heading(px4_yaw_rad)            
+            
+            self.sendWaypointNED(NED_pos, heading_deg, self.drone_params["precision_max_ang_vel_deg_s"], self.drone_params["precision_max_lin_vel_m_s"], self.drone_params["precision_max_z_vel_m_s"], self.drone_params["precision_max_lin_accel_m_s2"])    
 
             # if the new waypoint is within a certain distance of the robot, switch to grasping state
-            if self.isInPosNED(NED_pos, 0.5, 0.2):
+            if self.isInPosNED(NED_pos, 0.5, 0.2):  #TODO: ROS-tunable params
                 return State.GRASPING
 
         # stay in navigation state
