@@ -20,17 +20,7 @@ import math
 
 from enum import Enum, auto
 
-# drone parameter dictionary
-drone_params = {
-    "fast_max_lin_vel_m_s": 8,
-    "fast_max_ang_vel_deg_s": 90,
-    "fast_max_lin_accel_m_s2": 1,
-    "fast_max_z_vel_m_s": 2,
-    "precision_max_lin_vel_m_s": 2,
-    "precision_max_ang_vel_deg_s": 30,
-    "precision_max_lin_accel_m_s2": 0.5,
-    "precision_max_z_vel_m_s": 0.5,
-}
+
 
 class State(Enum):
     HOLD = "hold"
@@ -43,8 +33,23 @@ class TaskManagerNode(Node):
 
     def __init__(self):
         super().__init__('trt_detection_node')
+        
+        # drone flight parameters dictionary
+        self.drone_params = {
+            "fast_max_lin_vel_m_s": 8,
+            "fast_max_ang_vel_deg_s": 90,
+            "fast_max_lin_accel_m_s2": 1,
+            "fast_max_z_vel_m_s": 2,
+            "precision_max_lin_vel_m_s": 1,
+            "precision_max_ang_vel_deg_s": 30,
+            "precision_max_lin_accel_m_s2": 0.4,
+            "precision_max_z_vel_m_s": 0.5,
+        }
 
         ### TOPIC DECLARATION - ALL PARAMETERIZED THROUGH ROS2 LAUNCH
+                
+        self.declare_parameter('drone_pose_topic', 'drone/waypoint')
+        self.declare_parameter('drone_telemetry_topic', 'drone/telemetry')
 
         # Topic for receiving raw image from camera # TODO - does the task manager really need this? VBM/Detection can process the point cloud / image directly
         self.declare_parameter('image_topic', 'image')
@@ -80,13 +85,13 @@ class TaskManagerNode(Node):
         self.detection_subscriber = self.create_subscription(Detection2D, 
                                                     self.get_parameter('detection_topic').value, 
                                                     self.receive_detection, 10)
-        # self.telemetry_subscriber = self.create_subscription(Telemetry, 
-        #                                             self.get_parameter('telemetry_topic').value, 
-        #                                             self.receive_detection, 10)
+        self.telemetry_subscriber = self.create_subscription(DroneTelemetry, 
+                                                    self.get_parameter('drone_telemetry_topic').value, 
+                                                    self.receive_telemetry, 10)
         self.extract_subscriber = self.create_subscription(Point,
                                                     self.get_parameter('vbm_extract_topic').value,
                                                     self.receive_extract_pt, 10)
-        self.grasp_subscriber = self.create_subscription(PoseStamped, # MARK TODO edit optimal_grasp
+        self.grasp_subscriber = self.create_subscription(PoseStamped,
                                                     self.get_parameter('vbm_grasp_topic').value, 
                                                     self.receive_grasp, 10)
         # self.arm_status_subscriber = self.create_subscription(DynaArmStatus, 
@@ -122,13 +127,17 @@ class TaskManagerNode(Node):
             self.state_setter_subscriber.topic: False,
             self.image_subscriber.topic: False,
             self.detection_subscriber.topic: False,
-            # self.telemetry_subscriber.topic: False,
+            self.telemetry_subscriber.topic: False,
             self.extract_subscriber: False,
             self.grasp_subscriber.topic: False,
             # self.arm_status_subscriber.topic: False,
         }
 
-        self.lastSetpointNED = None #TODO replace
+        self.lastSetpointNED = [0.0, 0.0, 0.0] 
+
+        # Add search state tracking
+        self.search_start_time = None
+        self.search_start_heading = None
 
     #
     #### SET UP INCOMING MESSAGES AS PROPERTIES SO WE CAN KEEP TRACK OF WHAT
@@ -143,6 +152,9 @@ class TaskManagerNode(Node):
     @state.setter
     def state_setter(self, value) -> State:
         self._state = value
+        if value not in State:
+            raise ValueError(f"Invalid state: {value}")
+        self._state = State.HOLD
     
     def receive_desired_state(self, ros_msg: String):
         self.received_new[self.state_setter_subscriber.topic] = True
@@ -179,15 +191,15 @@ class TaskManagerNode(Node):
         self.received_new[self.image_subscriber.topic] = True
         self._raw_image = ros_msg
 
-    # @property
-    # def telemetry(self) -> Telemetry:
-    #     self.received_new[self.telemetry_subscriber.topic] = False
-    #     return self._telemetry
+    @property
+    def _telemetry(self) -> DroneTelemetry:
+        self.received_new[self.telemetry_subscriber.topic] = False
+        return self._telemetry
 
-    # @telemetry.setter
-    # def receive_telemetry(self, ros_msg: Telemetry):
-        # self.received_new[self.telemetry_subscriber.topic] = True
-    #     self._telemetry = ros_msg
+    @_telemetry.setter
+    def receive_telemetry(self, ros_msg: DroneTelemetry):
+        self.received_new[self.telemetry_subscriber.topic] = True
+        self._telemetry = ros_msg
 
     @property
     def raw_grasp(self) -> PoseStamped:
@@ -257,13 +269,13 @@ class TaskManagerNode(Node):
         
         # listen for desiredState
         # if there is desiredState, state = desiredState
-        if self.desired_state:
-            self.State = self.desired_state
-            self.desired_state = None
+        # if self.desired_state:
+        #     self.State = self.desired_state
+        #     self.desired_state = None
         pass # TODO
 
     def grasp(self):
-        self.droneHover() # MARK TODO
+        self.droneHover() # TODO - this should be a continuation of processDetect and use the pose in raw_grasp to move the arm
         
         # check livedetect information
         # if bounding box size is within 'pickup' range AND bounding box centroid is within 'pickup' range
@@ -276,13 +288,13 @@ class TaskManagerNode(Node):
     def sendWaypointNED(self, NEDpoint: list[float, float, float], heading:float=None, max_ang_vel_deg_s:float=None, max_lin_vel_m_s:float=None, max_z_vel_m_s:float=None, max_lin_accel_m_s2:float=None):
         """
         NEDpoint is the waypoiont to send to the drone in [N,E,D] format
-        heading is OPTIONAL, and is the yaw
+        heading is OPTIONAL, speeds if not specified are left at precision (slow)
         """
         # give drone NED coordinate to navigate to
         
         # keep the current heading if not given
         if not heading:
-            heading = self.telemetry.heading_degrees                      
+            heading = self._telemetry.heading_degrees                      
         
         # send waypoint by creating a PoseStamped message
         waypoint_msg = DroneWaypoint()
@@ -292,43 +304,72 @@ class TaskManagerNode(Node):
         waypoint_msg.header = header
 
         # Set the pose data 
-        waypoint_msg.ned_pos.x = NEDpoint(0)
-        waypoint_msg.ned_pos.y = NEDpoint(1)
-        waypoint_msg.ned_pos.z = NEDpoint(2)
+        waypoint_msg.ned_pos.x = NEDpoint[0]
+        waypoint_msg.ned_pos.y = NEDpoint[1]
+        waypoint_msg.ned_pos.z = NEDpoint[2]
         if heading:
             waypoint_msg.heading_degrees = heading
         else:
-            waypoint_msg.heading_degrees = self.telemetry.heading_degrees
+            waypoint_msg.heading_degrees = self._telemetry.heading_degrees
 
         # Set the velocity and acceleration data
         if max_ang_vel_deg_s:
             waypoint_msg.max_ang_vel_deg_s = max_ang_vel_deg_s
         else:
-            waypoint_msg.max_ang_vel_deg_s = drone_params["slow_max_ang_vel_deg_s"]
+            waypoint_msg.max_ang_vel_deg_s = self.drone_params["precision_max_ang_vel_deg_s"]
         
         if max_lin_vel_m_s:
             waypoint_msg.max_lin_vel_m_s = max_lin_vel_m_s
         else:
-            waypoint_msg.max_lin_vel_m_s = drone_params["slow_max_lin_vel_m_s"]
+            waypoint_msg.max_lin_vel_m_s = self.drone_params["precision_max_lin_vel_m_s"]
             
         if max_z_vel_m_s:
             waypoint_msg.max_z_vel_m_s = max_z_vel_m_s
         else:
-            waypoint_msg.max_z_vel_m_s = drone_params["slow_max_z_vel_m_s"]
+            waypoint_msg.max_z_vel_m_s = self.drone_params["precision_max_z_vel_m_s"]
             
         if max_lin_accel_m_s2:
             waypoint_msg.max_lin_accel_m_s2 = max_lin_accel_m_s2
         else:
-            waypoint_msg.max_lin_accel_m_s2 = drone_params["slow_max_lin_accel_m_s2"]     
-
+            waypoint_msg.max_lin_accel_m_s2 = self.drone_params["precision_max_lin_accel_m_s2"]     
+    
         self.drone_publisher.publish(waypoint_msg)            
     
     def search(self):
         # move drone to next position in search pattern
-        # just slowly spin for now
-        # if new/different data from LiveDetect
-            # state = navigate
-        pass # TODO
+        # TODO - make this a real search pattern
+                
+        # just slowly spin for now, slowly
+        rpm = 2.0    
+        degrees_per_second = rpm * 360.0 / 60.0
+
+        # init
+        if self.search_start_time is None:
+            self.search_start_time = self.get_clock().now()
+            self.search_start_heading = self._telemetry.heading_degrees
+            self.debug(self.debug_drone, "Starting search pattern")
+
+        # desired heading based on elapsed time
+        current_time = self.get_clock().now()
+        elapsed = (current_time - self.search_start_time).nanoseconds / 1e9
+        desired_heading = (self.search_start_heading + elapsed * degrees_per_second) % 360.0
+
+        # send waypoint maintaining position but rotating
+        self.sendWaypointNED(
+            [self.lastSetpointNED[0], 
+             self.lastSetpointNED[1],
+             self.lastSetpointNED[2]],
+            heading=desired_heading,
+            max_ang_vel_deg_s=degrees_per_second * 1.2  # 20% for smoothness
+        )
+
+        # detection found, transition states
+        if self.is_new_data_from_subscriber(self.detection_subscriber):
+            self.search_start_time = None   # reset search timer
+            self.search_start_heading = None
+            return State.NAVIGATING
+        
+        return State.SEARCHING
 
     def navigate(self):
         # perform approach sequence
@@ -339,7 +380,7 @@ class TaskManagerNode(Node):
         # if new extracted pt, recalculate approach
         if self.is_new_data_from_subscriber(self.extract_subscriber):
             FLU_pos = self.offsetPointFLU(self.extract_pt, [0, 0, 0])
-            NED_pos = self.FLU2NED(FLU_pos, self.telemetry.attitude)
+            NED_pos = self.FLU2NED(FLU_pos, self._telemetry.heading_degrees)
             self.sendWaypointNED(NED_pos)
 
             # If the new waypoint is within a certain distance of the robot, switch to grasping
@@ -360,7 +401,7 @@ class TaskManagerNode(Node):
         # calculate where drone needs to be to be within X range of a point,
         return [FLUpoint[0] + FLUoffset[0], FLUpoint[1] + FLUoffset[1], FLUpoint[2] + FLUoffset[2]]
 
-    def FLU2NED(self, FLUoffsetPoint: list[float, float, float], yaw) -> list[float, float, float]:
+    def FLU2NED(self, FLUoffsetPoint: list[float, float, float], heading_deg) -> list[float, float, float]:
         """
         yaw is Heading in degrees 0 to 360
         """
@@ -371,7 +412,7 @@ class TaskManagerNode(Node):
         """Convert a local FLU offset in meters to NED coordinates
         Returns the offset in NED, not the global NED"""
         # convert yaw to radians
-        yaw_rad = yaw * (math.pi/180)   
+        yaw_rad = heading_deg * (math.pi/180)   
         
         # convert the offset to rotated FLU
         rotated_flu_x = FLUoffsetPoint[0] * math.cos(yaw_rad) + FLUoffsetPoint[1] * math.sin(yaw_rad)
@@ -387,7 +428,7 @@ class TaskManagerNode(Node):
 
     def isInPosNED(self, NEDpoint: list[float, float, float], tolerance: float) -> bool:
         for i in range(len(NEDpoint)):
-            if (NEDpoint(i) - tolerance <= self.lastSetpointNED(i)) and (self.lastSetpointNED(i) <= NEDpoint(i) + tolerance):
+            if (NEDpoint[i] - tolerance <= self.lastSetpointNED[i]) and (self.lastSetpointNED [i] <= NEDpoint[i] + tolerance):
                 continue
             else: return False
         
@@ -450,6 +491,7 @@ class TaskManagerNode(Node):
         if self.is_new_data_from_subscriber(self.detection_subscriber):
             # DETECTION CONFIDENCE - USEFUL FOR DEBUG
             probability = self.detection.results[0].score
+            #TODO: check errors if there is not box
             # FULL BOUNDING BOX OF DETECTED OBJECT
             bounding_box = self.detection.bbox
 
