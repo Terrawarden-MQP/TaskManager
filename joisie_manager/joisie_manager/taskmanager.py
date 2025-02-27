@@ -293,17 +293,15 @@ class TaskManagerNode(Node):
 
     def grasp(self):
         self.droneHover()
+        self.processDetection()
         
         # calculate grasp
         # generate posestamped message from grastp
-
-        # check livedetect information
-        # if bounding box size is within 'pickup' range AND bounding box centroid is within 'pickup' range
-            self.sendArmToPoint(graspPoseMsg)
+        if self.is_new_data_from_subscriber(self.grasp_subscriber):
+            self.raw_grasp
+            self.sendArmToPoint(self.raw_grasp)
         
-
-
-        return State.GRASPING # TODO
+        return State.GRASPING # TODO - what state makes sense to move into?
     
 # ----- DRONE HELPERS
 
