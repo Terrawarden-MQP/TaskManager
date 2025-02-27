@@ -41,39 +41,48 @@ class TaskManagerNode(Node):
             "precision_max_z_vel_m_s": 0.5,
         }
 
-        ### TOPIC DECLARATION - ALL PARAMETERIZED THROUGH ROS2 LAUNCH
+    ### TOPIC DECLARATION - ALL PARAMETERIZED THROUGH ROS2 LAUNCH
                 
         self.declare_parameter('drone_pose_topic', 'drone/waypoint')
         self.declare_parameter('drone_telemetry_topic', 'drone/telemetry')
 
-        # Topic for receiving raw image from camera # TODO - does the task manager really need this? VBM/Detection can process the point cloud / image directly
-        # NO
-        self.declare_parameter('image_topic', 'image')
+        # Topic for receiving raw image from camera - OPTIONAL
+        # self.declare_parameter('image_topic', 'image')
+
         # Topic for receiving Detection from LiveDetect Node
         self.declare_parameter('detection_topic', 'joisie_detection')
+
         # Topic for sending detected object centroid to VBM
         self.declare_parameter('centroid_topic', 'joisie_detected_centroid')
+
         # Topic for receiving 3D point from VBM extract_cluster
         self.declare_parameter('vbm_extract_topic', 'joisie_extract_centroid')
+
         # Topic for receiving grasp from VBM optimal_grasp
         self.declare_parameter('vbm_grasp_topic', 'joisie_grasp_read')
+
         # Topic for sending grasp to arm
         self.declare_parameter('arm_grasp_topic', 'joisie_grasp_send')
+
         # CustomArmMsg from Arm Node
         self.declare_parameter('arm_status_topic', 'joisie_arm_status')
+
         # Topic for InRangeOfObj Service Call to Arm Node
         self.declare_parameter('arm_service_topic', 'joisie_arm_inrange_service')
+
         # Topic for receiving Telemetry from Drone Node
         # self.declare_parameter('telemetry', 'joisie_telemetry')
+
         # Topic for sending target pose to drone
         self.declare_parameter('drone_pose_topic', 'joisie_target_pose')
+
         # Topic to send state information
         self.declare_parameter('state_topic','joisie_state')
 
         self.declare_parameter('state_setter_topic', 'joisie_set_state')
 
         # -----
-        # SUBSCRIBERS
+    # SUBSCRIBERS
 
         self.state_setter_subscriber = self.create_subscription(String, 
                                             self.get_parameter('state_setter_topic').value, 
@@ -104,7 +113,7 @@ class TaskManagerNode(Node):
         #                                             self.receive_grasp, 10)
 
         # -----
-        # PUBLISHERS
+    # PUBLISHERS
 
         self.drone_publisher = self.create_publisher(DroneWaypoint, 
                                                     self.get_parameter('drone_pose_topic').value, 10)
@@ -116,7 +125,7 @@ class TaskManagerNode(Node):
                                                     self.get_parameter('state_topic').value, 10)
 
         # -----
-        # SERVICES
+    # SERVICES
 
         self.in_range_service = self.create_client(Boolean, self.get_parameter('arm_grasp_topic').value)
 
@@ -155,8 +164,7 @@ class TaskManagerNode(Node):
     #### NEW INFORMATION HAS / HASN'T BEEN ACCESSED
     #
 
-    # -----
-# PROPERTIES
+# ----- PROPERTIES
 
     @property
     def state(self) -> State:
@@ -243,7 +251,7 @@ class TaskManagerNode(Node):
     #     self.received_new[self.arm_status_subscriber.topic] = True
     #     self._arm_status = ros_msg
 
-    # ----- HELPER FNs
+# ----- HELPER FNs
 
     def publish_helper(self, publisher, message):
         """PUBLISHER HELPER SO WE DON"T PUBLISH DUPLICATE MESSAGES
@@ -273,7 +281,7 @@ class TaskManagerNode(Node):
             # Node name, topic, message, extra debug info (if present)
             self.get_logger().info(string)
 
-    # ----- HOLD
+# ----- HOLD
 
     def hold(self):  
         self.droneHover()
@@ -281,18 +289,23 @@ class TaskManagerNode(Node):
 
         return State.HOLD
 
-    # ----- GRASP
+# ----- GRASP
 
     def grasp(self):
         self.droneHover()
         
+        # calculate grasp
+        # generate posestamped message from grastp
+
         # check livedetect information
         # if bounding box size is within 'pickup' range AND bounding box centroid is within 'pickup' range
-            # execute grasp
-        # calculate grasp
+            self.sendArmToPoint(graspPoseMsg)
+        
+
+
         return State.GRASPING # TODO
     
-    # ----- DRONE HELPERS
+# ----- DRONE HELPERS
 
     def sendWaypointNED(self, NEDpoint: Point, heading:float=None, max_ang_vel_deg_s:float=None, max_lin_vel_m_s:float=None, max_z_vel_m_s:float=None, max_lin_accel_m_s2:float=None):
         """
@@ -447,7 +460,23 @@ class TaskManagerNode(Node):
         """
         return (yaw * (180.0 / math.pi)) % 360.0
 
-    # ----- SEARCH
+# ----- ARM HELPERS
+    def openGripper(self):
+        '''send ROSmsg to arm control node to open gripper'''
+        pass
+    
+    def closeGripper(self):
+        '''send ROSmsg to arm control node to close gripper'''
+        pass
+
+    def sendArmToPoint(self, FLUpoint, trajectory:bool=True):
+        '''send ROSmsg to arm control node with a point'''
+
+        pass
+    
+
+
+# ----- SEARCH
 
     def search(self):
         """
@@ -486,7 +515,7 @@ class TaskManagerNode(Node):
         
         return State.SEARCHING
 
-    # ----- NAVIGATE
+# ----- NAVIGATE
 
     def navigate(self):
         """ 
@@ -519,7 +548,7 @@ class TaskManagerNode(Node):
         # stay in navigation state
         return State.NAVIGATING
 
-    # -----
+# -----
     
     def deposit(self):
         # drops the object
@@ -531,7 +560,7 @@ class TaskManagerNode(Node):
         # Set mode to State.HOLD if any errors
         return False # TODO
 
-    # -----
+# -----
 
     # Checks for detected object, publishes 2D point, triggers extracting 3D point from VBM (and 3D grasp pose depending on state)
     def processDetection(self):
@@ -541,7 +570,9 @@ class TaskManagerNode(Node):
         if self.is_new_data_from_subscriber(self.detection_subscriber):
             # DETECTION CONFIDENCE - USEFUL FOR DEBUG
             probability = self.detection.results[0].score
+
             #TODO: check errors if there is not box
+
             # FULL BOUNDING BOX OF DETECTED OBJECT
             bounding_box = self.detection.bbox
 
@@ -555,7 +586,7 @@ class TaskManagerNode(Node):
         # RETURN FALSE IF NO NEW INFO FROM SUBSCRIBER
         return False
 
-    # ----- MAIN LOOP
+# ----- MAIN LOOP
 
     def main(self):
 
