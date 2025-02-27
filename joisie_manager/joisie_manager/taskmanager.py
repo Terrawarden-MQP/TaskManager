@@ -377,10 +377,14 @@ class TaskManagerNode(Node):
 
     def droneHover(self):   
         """
-        Sends last waypoint to drone as new waypoint, essentially tells it to stay where it is
+        Sends last waypoint to drone as new waypoint, essentially tells it to stay where it is.
+        Raises RuntimeError if no previous waypoint exists.
         """
-        last_setpoint = self.last_sent_messages[self.drone_publisher.topic].ned_pos
-        
+        if (self.drone_publisher.topic not in self.last_sent_messages or 
+            self.last_sent_messages[self.drone_publisher.topic] is None):
+            last_setpoint = self.telemetry.ned_pos
+        else:
+            last_setpoint = self.last_sent_messages[self.drone_publisher.topic].ned_pos
         self.sendWaypointNED(Point(last_setpoint.x, last_setpoint.y, last_setpoint.z))
 
     def isInPosNED(self, NEDpoint: Point, toleranceXY: float, toleranceZ: float) -> bool:
