@@ -471,8 +471,9 @@ class TaskManagerNode(Node):
         '''send ROSmsg to arm control node to close gripper'''
         pass
 
-    def sendArmToPoint(self, FLUpoint, trajectory:bool=True):
+    def sendArmToPoint(self, poseStampedMsg, trajectory:bool=True):
         '''send ROSmsg to arm control node with a point'''
+        # send posestamped to different topics depending wether trajectory is true or false
 
         pass
     
