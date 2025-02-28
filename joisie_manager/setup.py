@@ -21,7 +21,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-	        'joisie = joisie_manager.joisie:main',
+	        'run_manager = joisie_manager.taskmanager:main',
         ],
     },
 )

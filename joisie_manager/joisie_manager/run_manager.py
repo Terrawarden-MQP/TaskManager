@@ -1,13 +1,14 @@
 # from joisie_vision.opencv_model import CV2DetectionNode
 
 import rclpy
+from taskmanager import *
 
 def main(args=None):
     rclpy.init(args=args)
 
-    # color_detection_node = CV2DetectionNode()
+    manager_node = TaskManagerNode()
 
-    # rclpy.spin(color_detection_node)
+    rclpy.spin(manager_node)
 
     # Destroy the node explicitly
     # (optional - otherwise it will be done automatically
