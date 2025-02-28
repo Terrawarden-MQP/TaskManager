@@ -27,7 +27,7 @@ class State(Enum):
 class TaskManagerNode(Node):
 
     def __init__(self):
-        super().__init__('trt_detection_node')
+        super().__init__('task_manager')
         
         # drone flight parameters dictionary
         self.drone_params = {
@@ -87,14 +87,15 @@ class TaskManagerNode(Node):
         # -----
 
 
-        self.declare_parameter('debug', '0b00000')
+        self.declare_parameter('debug', '0b11111')
         debug = int(self.get_parameter('debug').value,2)
         self.debug_publish  = bool(debug & 0b10000)
         self.debug_drone    = bool(debug & 0b01000)
         self.debug_detect   = bool(debug & 0b00100)
         self.debug_vbm      = bool(debug & 0b00010)
         self.debug_arm      = bool(debug & 0b00001)
-
+        self.get_logger().info(f"Debug Flags: Publish: {self.debug_publish}, Drone {self.debug_drone},"+
+                               f" Detection {self.debug_detect}, VBM {self.debug_vbm}, Arm {self.debug_arm}")
         # INITIAL STATE
         self._state = State.HOLD
 
@@ -113,29 +114,29 @@ class TaskManagerNode(Node):
                                             self.get_parameter('state_setter_topic').value, 
                                             self.receive_desired_state, 10)
         
-        self.image_subscriber = self.create_subscription(Image, 
-                                                    self.get_parameter('image_topic').value, 
-                                                    self.receive_raw_image, 10)
+        # self.image_subscriber = self.create_subscription(Image, 
+        #                                             self.get_parameter('image_topic').value, 
+        #                                             self.raw_image, 10)
         
         self.detection_subscriber = self.create_subscription(Detection2D, 
                                                     self.get_parameter('detection_topic').value, 
-                                                    self.receive_detection, 10)
+                                                    self.get_setter("detection"), 10)
         
         self.telemetry_subscriber = self.create_subscription(DroneTelemetry, 
                                                     self.get_parameter('drone_telemetry_topic').value, 
-                                                    self.receive_telemetry, 10)
+                                                    self.get_setter("telemetry"), 10)
         
         self.extract_subscriber = self.create_subscription(Point,
                                                     self.get_parameter('vbm_extract_topic').value,
-                                                    self.receive_extract_pt, 10)
+                                                    self.get_setter("extract_pt"), 10)
         
         self.grasp_subscriber = self.create_subscription(PoseStamped,
                                                     self.get_parameter('vbm_grasp_topic').value, 
-                                                    self.receive_grasp, 10)
+                                                    self.get_setter("raw_grasp"), 10)
 
         # self.arm_status_subscriber = self.create_subscription(DynaArmStatus, 
         #                                             self.get_parameter('arm_status_topic').value, 
-        #                                             self.receive_grasp, 10)
+        #                                             self.arm_status, 10)
 
         # -----
     # PUBLISHERS
@@ -152,7 +153,7 @@ class TaskManagerNode(Node):
         # received_new needs to exist for the properties but needs the subscribers to exist as well
         self.received_new = {
             self.state_setter_subscriber.topic: False,
-            self.image_subscriber.topic: False,
+            # self.image_subscriber.topic: False,
             self.detection_subscriber.topic: False,
             self.telemetry_subscriber.topic: False,
             self.extract_subscriber: False,
@@ -167,13 +168,18 @@ class TaskManagerNode(Node):
 
 # ----- PROPERTIES
 
+    # When python initializes properties, it hides the setters so that they get called when you do "self.property ="
+    # This function retrieves the setter manually for any of the properties for the purposes of subscriber callbacks
+    def get_setter(self, property):
+        return lambda value: getattr(TaskManagerNode, property).fset(self, value)
+
     @property
     def state(self) -> State:
         self.received_new[self.state_setter_subscriber.topic] = False
         return self._state
 
     @state.setter
-    def state_setter(self, value) -> State:
+    def state(self, value) -> State:
         self._state = value
         if value not in State:
             raise ValueError(f"Invalid state: {value}")
@@ -193,20 +199,20 @@ class TaskManagerNode(Node):
         return self._detection
 
     @detection.setter
-    def receive_detection(self, ros_msg: Detection2D):
+    def detection(self, ros_msg: Detection2D):
         self.received_new[self.detection_subscriber.topic] = True
         self._detection = ros_msg
 
 
-    @property
-    def raw_image(self) -> Image:
-        self.received_new[self.image_subscriber.topic] = False
-        return self._raw_image
+    # @property
+    # def raw_image(self) -> Image:
+    #     self.received_new[self.image_subscriber.topic] = False
+    #     return self._raw_image
 
-    @raw_image.setter
-    def receive_raw_image(self, ros_msg: Image):
-        self.received_new[self.image_subscriber.topic] = True
-        self._raw_image = ros_msg
+    # @raw_image.setter
+    # def raw_image(self, ros_msg: Image):
+    #     self.received_new[self.image_subscriber.topic] = True
+    #     self._raw_image = ros_msg
 
 
     @property
@@ -215,7 +221,7 @@ class TaskManagerNode(Node):
         return self._telemetry
 
     @telemetry.setter
-    def receive_telemetry(self, ros_msg: DroneTelemetry):
+    def telemetry(self, ros_msg: DroneTelemetry):
         self.received_new[self.telemetry_subscriber.topic] = True
         self._telemetry = ros_msg
 
@@ -226,7 +232,7 @@ class TaskManagerNode(Node):
         return self._raw_grasp
 
     @raw_grasp.setter
-    def receive_grasp(self, ros_msg: PoseStamped):
+    def raw_grasp(self, ros_msg: PoseStamped):
         self.received_new[self.grasp_subscriber.topic] = True
         self._raw_grasp = ros_msg
 
@@ -237,7 +243,7 @@ class TaskManagerNode(Node):
         return self._extract_pt
     
     @extract_pt.setter
-    def receive_extract_pt(self, ros_msg: Point):
+    def extract_pt(self, ros_msg: Point):
         self.received_new[self.extract_subscriber.topic] = True
         self._extract_pt = ros_msg
 
@@ -248,7 +254,7 @@ class TaskManagerNode(Node):
     #     return self._arm_status
     
     # @arm_status.setter
-    # def receive_arm_status(self, ros_msg: DynaArmStatus):
+    # def arm_status(self, ros_msg: DynaArmStatus):
     #     self.received_new[self.arm_status_subscriber.topic] = True
     #     self._arm_status = ros_msg
 

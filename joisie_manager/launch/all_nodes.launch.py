@@ -11,7 +11,7 @@ def generate_launch_description():
         # Detection arguments
         DeclareLaunchArgument('show_cv', default_value="false", description='Display Raw OpenCV Output'),
         # Task Manager arguments
-        DeclareLaunchArgument("image_topic", default_value="image", description="Topic for receiving raw image from camera"),
+        DeclareLaunchArgument("image_topic", default_value="/camera/camera/color/image_raw", description="Topic for receiving raw image from camera"),
         DeclareLaunchArgument("detection_topic", default_value="joisie_detection", description="Topic for receiving Detection from LiveDetect Node"),
         # DeclareLaunchArgument("centroid_topic", default_value="joisie_detected_centroid", description="Topic for sending detected object centroid to VBM"), # SEE coord_topic
         DeclareLaunchArgument("drone_pose_topic", default_value="joisie_target_pose", description="Topic for sending target pose to drone"),
@@ -23,6 +23,7 @@ def generate_launch_description():
         DeclareLaunchArgument("arm_service_topic", default_value="joisie_arm_inrange_service", description="Topic for InRangeOfObj Service Call to Arm Node"),
         DeclareLaunchArgument("state_setter_topic", default_value="joisie_set_state", description="Topic for setting states"),
         DeclareLaunchArgument("state_topic",default_value="joisie_state",description="Topic to publish task manager state information"),
+        DeclareLaunchArgument("manager_debug",default_value="0b11111",description="Flags for selecting which sections of code to debug"),
         # VBM arguments
         DeclareLaunchArgument('log_level', default_value='INFO', description='Log verbosity level'),
         DeclareLaunchArgument('cluster_topic', default_value='/detected_cluster', description='Cluster topic name'),
@@ -89,9 +90,9 @@ def generate_launch_description():
         Node(
             package="joisie_manager",
             namespace="joisie_manager",
-            executable="run_manager",
+            executable="task_manager",
             parameters=[{
-                "image_topic": LaunchConfiguration("image_topic"),
+                # "image_topic": LaunchConfiguration("image_topic"),
                 "detection_topic": LaunchConfiguration("detection_topic"),
                 "centroid_topic": LaunchConfiguration("coord_topic"),
                 "drone_pose_topic": LaunchConfiguration("drone_pose_topic"),
@@ -102,6 +103,7 @@ def generate_launch_description():
                 "arm_service_topic": LaunchConfiguration("arm_service_topic"),
                 "state_setter_topic": LaunchConfiguration("state_setter_topic"),
                 "state_topic": LaunchConfiguration("state_topic"),
+                "debug": LaunchConfiguration("manager_debug"),
             }]
         ),
         Node(
