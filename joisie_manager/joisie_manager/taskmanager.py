@@ -46,25 +46,33 @@ class TaskManagerNode(Node):
         self.declare_parameter('drone_pose_topic', 'drone/waypoint')
         self.declare_parameter('drone_telemetry_topic', 'drone/telemetry')
 
-        # Topic for receiving raw image from camera # TODO - does the task manager really need this? VBM/Detection can process the point cloud / image directly
-        # NO
-        self.declare_parameter('image_topic', 'image')
+        # Topic for receiving raw image from camera - OPTIONAL
+        # self.declare_parameter('image_topic', 'image')
+
         # Topic for receiving Detection from LiveDetect Node
         self.declare_parameter('detection_topic', 'joisie_detection')
+
         # Topic for sending detected object centroid to VBM
         self.declare_parameter('centroid_topic', 'joisie_detected_centroid')
+
         # Topic for receiving 3D point from VBM extract_cluster
         self.declare_parameter('vbm_extract_topic', 'joisie_extract_centroid')
+
         # Topic for receiving grasp from VBM optimal_grasp
         self.declare_parameter('vbm_grasp_topic', 'joisie_grasp_read')
+
         # Topic for sending grasp to arm
         self.declare_parameter('arm_grasp_topic', 'joisie_grasp_send')
+
         # CustomArmMsg from Arm Node
         self.declare_parameter('arm_status_topic', 'joisie_arm_status')
+
         # Topic for InRangeOfObj Service Call to Arm Node
         self.declare_parameter('arm_service_topic', 'joisie_arm_inrange_service')
+
         # Topic for receiving Telemetry from Drone Node
         # self.declare_parameter('telemetry', 'joisie_telemetry')
+
         # Topic for sending target pose to drone
         # self.declare_parameter('drone_pose_topic', 'joisie_target_pose')
         # Topic to send state information
@@ -99,7 +107,7 @@ class TaskManagerNode(Node):
         self.search_start_heading = None
 
         # -----
-        # SUBSCRIBERS
+    # SUBSCRIBERS
 
         self.state_setter_subscriber = self.create_subscription(String, 
                                             self.get_parameter('state_setter_topic').value, 
@@ -130,7 +138,7 @@ class TaskManagerNode(Node):
         #                                             self.receive_grasp, 10)
 
         # -----
-        # PUBLISHERS
+    # PUBLISHERS
 
         self.drone_publisher = self.create_publisher(DroneWaypoint, 
                                                     self.get_parameter('drone_pose_topic').value, 10)
@@ -140,7 +148,7 @@ class TaskManagerNode(Node):
                                                     self.get_parameter('arm_grasp_topic').value, 10)
         self.state_publisher = self.create_publisher(String,
                                                     self.get_parameter('state_topic').value, 10)
-        
+                
         # received_new needs to exist for the properties but needs the subscribers to exist as well
         self.received_new = {
             self.state_setter_subscriber.topic: False,
@@ -157,8 +165,7 @@ class TaskManagerNode(Node):
     #### NEW INFORMATION HAS / HASN'T BEEN ACCESSED
     #
 
-    # -----
-# PROPERTIES
+# ----- PROPERTIES
 
     @property
     def state(self) -> State:
@@ -245,7 +252,7 @@ class TaskManagerNode(Node):
     #     self.received_new[self.arm_status_subscriber.topic] = True
     #     self._arm_status = ros_msg
 
-    # ----- HELPER FNs
+# ----- HELPER FNs
 
     def publish_helper(self, publisher, message):
         """PUBLISHER HELPER SO WE DON"T PUBLISH DUPLICATE MESSAGES
@@ -275,7 +282,7 @@ class TaskManagerNode(Node):
             # Node name, topic, message, extra debug info (if present)
             self.get_logger().info(string)
 
-    # ----- HOLD
+# ----- HOLD
 
     def hold(self):  
         self.droneHover()
@@ -283,18 +290,21 @@ class TaskManagerNode(Node):
 
         return State.HOLD
 
-    # ----- GRASP
+# ----- GRASP
 
     def grasp(self):
         self.droneHover()
+        self.processDetection()
         
-        # check livedetect information
-        # if bounding box size is within 'pickup' range AND bounding box centroid is within 'pickup' range
-            # execute grasp
         # calculate grasp
-        return State.GRASPING # TODO
+        # generate posestamped message from grastp
+        if self.is_new_data_from_subscriber(self.grasp_subscriber):
+            self.raw_grasp
+            self.sendArmToPoint(self.raw_grasp)
+        
+        return State.GRASPING # TODO - what state makes sense to move into?
     
-    # ----- DRONE HELPERS
+# ----- DRONE HELPERS
 
     def sendWaypointNED(self, NEDpoint: Point, heading:float=None, max_ang_vel_deg_s:float=None, max_lin_vel_m_s:float=None, max_z_vel_m_s:float=None, max_lin_accel_m_s2:float=None):
         """
@@ -339,7 +349,8 @@ class TaskManagerNode(Node):
         else:
             waypoint_msg.max_lin_accel_m_s2 = self.drone_params["precision_max_lin_accel_m_s2"]     
     
-        self.drone_publisher.publish(waypoint_msg)   
+        self.drone_publisher.publish(waypoint_msg)  
+        Node.get_logger().debug(f'waypoint message: {waypoint_msg}', throttle_duration_sec=1.0) 
     
     
     def offsetPointFLU(self, FLUpoint: Point, FLUoffset: Point) -> Point:
@@ -388,6 +399,7 @@ class TaskManagerNode(Node):
         else:
             last_setpoint = self.last_sent_messages[self.drone_publisher.topic].ned_pos
         self.sendWaypointNED(Point(last_setpoint.x, last_setpoint.y, last_setpoint.z))
+        Node.get_logger().debug(f'drone hovering @ {last_setpoint}', throttle_duration_sec=1.0) 
 
     def isInPosNED(self, NEDpoint: Point, toleranceXY: float, toleranceZ: float) -> bool:
         """
@@ -453,7 +465,24 @@ class TaskManagerNode(Node):
         """
         return (yaw * (180.0 / math.pi)) % 360.0
 
-    # ----- SEARCH
+# ----- ARM HELPERS
+    def openGripper(self):
+        '''send ROSmsg to arm control node to open gripper'''
+        pass
+    
+    def closeGripper(self):
+        '''send ROSmsg to arm control node to close gripper'''
+        pass
+
+    def sendArmToPoint(self, poseStampedMsg, trajectory:bool=True):
+        '''send ROSmsg to arm control node with a point'''
+        # send posestamped to different topics depending wether trajectory is true or false
+
+        pass
+    
+
+
+# ----- SEARCH
 
     def search(self):
         """
@@ -465,6 +494,7 @@ class TaskManagerNode(Node):
         # just slowly spin for now, slowly
         rpm = 2.0    
         degrees_per_second = rpm * 360.0 / 60.0
+        Node.get_logger().debug(f'spinning, RPM: {rpm}') 
 
         # init
         if self.search_start_time is None:
@@ -484,15 +514,19 @@ class TaskManagerNode(Node):
             max_ang_vel_deg_s=degrees_per_second * 1.2  # 20% for smoothness
         )
 
+
         # detection found, transition states
         if self.is_new_data_from_subscriber(self.detection_subscriber):
             self.search_start_time = None   # reset search timer
             self.search_start_heading = None
+
+            Node.get_logger().debug(f'found object, changing to NAVIGATING') 
             return State.NAVIGATING
         
+        Node.get_logger().debug(f'nothing found, continue SEARCHING') 
         return State.SEARCHING
 
-    # ----- NAVIGATE
+# ----- NAVIGATE
 
     def navigate(self):
         """ 
@@ -505,6 +539,7 @@ class TaskManagerNode(Node):
         
         # if new extracted pt, recalculate approach
         if self.is_new_data_from_subscriber(self.extract_subscriber):
+            Node.get_logger().debug(f'new point extracted, recalculating approach') 
 
             # convert that 3D point to NED, offset it above and towards the drone a bit
             FLU_pos = self.offsetPointFLU(self.extract_pt, [-0.5, 0, 0.5])
@@ -520,12 +555,14 @@ class TaskManagerNode(Node):
 
             # if the new waypoint is within a certain distance of the robot, switch to grasping state
             if self.isInPosNED(NED_pos, 0.5, 0.2):  #TODO: ROS-tunable params
+                Node.get_logger().debug(f'within range of object, begin GRASPING') 
                 return State.GRASPING
 
         # stay in navigation state
+        Node.get_logger().debug(f'out of range, continue NAVIGATING') 
         return State.NAVIGATING
 
-    # -----
+# -----
     
     def deposit(self):
         # drops the object
@@ -537,7 +574,7 @@ class TaskManagerNode(Node):
         # Set mode to State.HOLD if any errors
         return False # TODO
 
-    # -----
+# -----
 
     # Checks for detected object, publishes 2D point, triggers extracting 3D point from VBM (and 3D grasp pose depending on state)
     def processDetection(self):
@@ -547,7 +584,9 @@ class TaskManagerNode(Node):
         if self.is_new_data_from_subscriber(self.detection_subscriber):
             # DETECTION CONFIDENCE - USEFUL FOR DEBUG
             probability = self.detection.results[0].score
+
             #TODO: check errors if there is not box
+
             # FULL BOUNDING BOX OF DETECTED OBJECT
             bounding_box = self.detection.bbox
 
@@ -561,15 +600,9 @@ class TaskManagerNode(Node):
         # RETURN FALSE IF NO NEW INFO FROM SUBSCRIBER
         return False
 
-    # ----- MAIN LOOP
+# ----- MAIN LOOP
 
     def main(self):
-
-        # ideal test 2/21: 
-            # test hold state, check that it moves to a desired state when recieving message
-            # test navigate state
-            # make + test basic search state (spin until see something)
-
 
         while True:
 
@@ -585,9 +618,13 @@ class TaskManagerNode(Node):
             elif self.state == State.NAVIGATING:
                 new_state = self.navigate()
             elif self.state == State.GRASPING:
-                new_state = self.grasp()
+                # new_state = self.grasp()
+                Node.get_logger().debug(f'state action is HOLD (debug 2/28)') 
+                new_state = self.hold()
             elif self.state == State.DEPOSITING:
-                new_state = self.deposit()
+                # new_state = self.deposit()
+                Node.get_logger().debug(f'state action is HOLD (debug 2/28)') 
+                new_state = self.hold()
             
             if self.checkForErrors():
                 new_state = State.HOLD
