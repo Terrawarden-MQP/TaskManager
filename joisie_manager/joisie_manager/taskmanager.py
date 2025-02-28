@@ -4,13 +4,13 @@ from rclpy.node import Node
 
 # CV Bridge and message imports
 from sensor_msgs.msg import Image
-from std_msgs.msg import String, Boolean, Header
+from std_msgs.msg import String, Bool, Header
 from vision_msgs.msg import Detection2D
 from terrawarden_interfaces.msg import DroneTelemetry
 from terrawarden_interfaces.msg import DroneWaypoint
 from geometry_msgs.msg import Pose2D, Point, PoseWithCovariance, PoseStamped
 import tf2_ros
-import transformations
+# import transformations
 import cv2
 import numpy as np
 import os
@@ -42,7 +42,7 @@ class TaskManagerNode(Node):
         }
 
         ### TOPIC DECLARATION - ALL PARAMETERIZED THROUGH ROS2 LAUNCH
-                
+        # Topic for sending target pose to drone
         self.declare_parameter('drone_pose_topic', 'drone/waypoint')
         self.declare_parameter('drone_telemetry_topic', 'drone/telemetry')
 
@@ -66,11 +66,37 @@ class TaskManagerNode(Node):
         # Topic for receiving Telemetry from Drone Node
         # self.declare_parameter('telemetry', 'joisie_telemetry')
         # Topic for sending target pose to drone
-        self.declare_parameter('drone_pose_topic', 'joisie_target_pose')
+        # self.declare_parameter('drone_pose_topic', 'joisie_target_pose')
         # Topic to send state information
         self.declare_parameter('state_topic','joisie_state')
 
         self.declare_parameter('state_setter_topic', 'joisie_set_state')
+        # -----
+        # SERVICES
+
+        # self.in_range_service = self.create_client(Bool, self.get_parameter('arm_grasp_topic').value) # TODO fix or delete
+
+        # -----
+
+
+        self.declare_parameter('debug', '0b00000')
+        debug = int(self.get_parameter('debug').value,2)
+        self.debug_publish  = bool(debug & 0b10000)
+        self.debug_drone    = bool(debug & 0b01000)
+        self.debug_detect   = bool(debug & 0b00100)
+        self.debug_vbm      = bool(debug & 0b00010)
+        self.debug_arm      = bool(debug & 0b00001)
+
+        # INITIAL STATE
+        self._state = State.HOLD
+
+        # STORE PREVIOUS MESSAGE SENT PER TOPIC
+        self.last_sent_messages = {}
+        self.received_new = {}      
+
+        # search state tracking
+        self.search_start_time = None
+        self.search_start_heading = None
 
         # -----
         # SUBSCRIBERS
@@ -114,28 +140,8 @@ class TaskManagerNode(Node):
                                                     self.get_parameter('arm_grasp_topic').value, 10)
         self.state_publisher = self.create_publisher(String,
                                                     self.get_parameter('state_topic').value, 10)
-
-        # -----
-        # SERVICES
-
-        self.in_range_service = self.create_client(Boolean, self.get_parameter('arm_grasp_topic').value)
-
-        # -----
-
-
-        self.declare_parameter('debug', '0b00000')
-        debug = self.get_parameter('debug').value
-        self.debug_publish  = bool(debug & 0b10000)
-        self.debug_drone    = bool(debug & 0b01000)
-        self.debug_detect   = bool(debug & 0b00100)
-        self.debug_vbm      = bool(debug & 0b00010)
-        self.debug_arm      = bool(debug & 0b00001)
-
-        # INITIAL STATE
-        self._state = State.HOLD
-
-        # STORE PREVIOUS MESSAGE SENT PER TOPIC
-        self.last_sent_messages = {}
+        
+        # received_new needs to exist for the properties but needs the subscribers to exist as well
         self.received_new = {
             self.state_setter_subscriber.topic: False,
             self.image_subscriber.topic: False,
@@ -144,11 +150,7 @@ class TaskManagerNode(Node):
             self.extract_subscriber: False,
             self.grasp_subscriber.topic: False,
             # self.arm_status_subscriber.topic: False,
-        }        
-
-        # search state tracking
-        self.search_start_time = None
-        self.search_start_heading = None
+        }  
 
     #
     #### SET UP INCOMING MESSAGES AS PROPERTIES SO WE CAN KEEP TRACK OF WHAT
@@ -591,3 +593,21 @@ class TaskManagerNode(Node):
                 new_state = State.HOLD
 
             self.state = new_state
+
+
+
+def main(args=None):
+    rclpy.init(args=args)
+
+    manager_node = TaskManagerNode()
+
+    rclpy.spin(manager_node)
+
+    # Destroy the node explicitly
+    # (optional - otherwise it will be done automatically
+    # when the garbage collector destroys the node object)
+    # color_detection_node.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == "__main__":
+    main()

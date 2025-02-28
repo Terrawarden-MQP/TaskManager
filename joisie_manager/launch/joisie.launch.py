@@ -16,8 +16,8 @@ def generate_launch_description():
         # DeclareLaunchArgument("centroid_topic", default_value="joisie_detected_centroid", description="Topic for sending detected object centroid to VBM"), # SEE coord_topic
         DeclareLaunchArgument("drone_pose_topic", default_value="joisie_target_pose", description="Topic for sending target pose to drone"),
         DeclareLaunchArgument("vbm_extract_topic",default_value="joisie_extract_centroid", description="Topic for receiving 3D Point from VBM extract_cluster"),
-        DeclareLaunchArgument("vbm_grasp_topic", default_value="joisie_grasp_read", description="Topic for receiving grasp from VBM"), # SEE pos_topic
-        # DeclareLaunchArgument('pos_topic', default_value='joisie_grasp_read', description='Grasp pose topic'),
+        # DeclareLaunchArgument("vbm_grasp_topic", default_value="joisie_grasp_read", description="Topic for receiving grasp from VBM"), # SEE pos_topic
+        DeclareLaunchArgument('pos_topic', default_value='joisie_grasp_read', description='Grasp pose topic'),
         DeclareLaunchArgument("arm_grasp_topic", default_value="joisie_grasp_send", description="Topic for sending grasp to arm"),
         DeclareLaunchArgument("arm_status_topic", default_value="joisie_arm_status", description="CustomArmMsg from Arm Node"),
         DeclareLaunchArgument("arm_service_topic", default_value="joisie_arm_inrange_service", description="Topic for InRangeOfObj Service Call to Arm Node"),
@@ -80,7 +80,7 @@ def generate_launch_description():
         Node(
             package="joisie_vision",
             namespace="joisie_vision",
-            executable="trt_detection",
+            executable="color_detection",
             parameters=[{
                     "topic":"/camera/camera/color/image_raw",
                     "show": LaunchConfiguration('show_cv')
@@ -89,7 +89,7 @@ def generate_launch_description():
         Node(
             package="joisie_manager",
             namespace="joisie_manager",
-            executable="trt_detection_node",
+            executable="run_manager",
             parameters=[{
                 "image_topic": LaunchConfiguration("image_topic"),
                 "detection_topic": LaunchConfiguration("detection_topic"),
@@ -148,7 +148,7 @@ def generate_launch_description():
                 'select_stability_metric': LaunchConfiguration('select_stability_metric'),
                 'variance_neighbors': LaunchConfiguration('variance_neighbors'),
                 'variance_threshold': LaunchConfiguration('variance_threshold'),
-                'pos_topic': LaunchConfiguration('vbm_grasp_topic'),
+                'pos_topic': LaunchConfiguration('pos_topic'),
             }],
             arguments=['--ros-args', '--log-level', LaunchConfiguration('log_level')]
         ),
