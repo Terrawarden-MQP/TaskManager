@@ -348,7 +348,8 @@ class TaskManagerNode(Node):
         else:
             waypoint_msg.max_lin_accel_m_s2 = self.drone_params["precision_max_lin_accel_m_s2"]     
     
-        self.drone_publisher.publish(waypoint_msg)   
+        self.drone_publisher.publish(waypoint_msg)  
+        Node.get_logger().debug(f'waypoint message: {waypoint_msg}', throttle_duration_sec=1.0) 
     
     
     def offsetPointFLU(self, FLUpoint: Point, FLUoffset: Point) -> Point:
@@ -593,12 +594,6 @@ class TaskManagerNode(Node):
 
     def main(self):
 
-        # ideal test 2/21: 
-            # test hold state, check that it moves to a desired state when recieving message
-            # test navigate state
-            # make + test basic search state (spin until see something)
-
-
         while True:
 
             # Publish current state
@@ -613,9 +608,11 @@ class TaskManagerNode(Node):
             elif self.state == State.NAVIGATING:
                 new_state = self.navigate()
             elif self.state == State.GRASPING:
-                new_state = self.grasp()
+                # new_state = self.grasp()
+                new_state = self.hold()
             elif self.state == State.DEPOSITING:
-                new_state = self.deposit()
+                # new_state = self.deposit()
+                new_state = self.hold()
             
             if self.checkForErrors():
                 new_state = State.HOLD
