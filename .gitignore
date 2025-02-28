@@ -1,0 +1,11 @@
+install/*
+install/*/*
+install/*/*/*
+
+log/*
+log/*/*
+log/*/*/*
+
+build/*
+build/*/*
+build/*/*/*
