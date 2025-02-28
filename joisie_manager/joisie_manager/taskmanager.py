@@ -398,7 +398,7 @@ class TaskManagerNode(Node):
         else:
             last_setpoint = self.last_sent_messages[self.drone_publisher.topic].ned_pos
         self.sendWaypointNED(Point(last_setpoint.x, last_setpoint.y, last_setpoint.z))
-        Node.get_logger().debug(f'drone hovering @ {last_setpoint}', throttle_duration_sec=1.0) 
+        debug(self.debug_drone, f'drone hovering @ {last_setpoint}', throttle_duration_sec=1.0) 
 
     def isInPosNED(self, NEDpoint: Point, toleranceXY: float, toleranceZ: float) -> bool:
         """
@@ -493,7 +493,7 @@ class TaskManagerNode(Node):
         # just slowly spin for now, slowly
         rpm = 2.0    
         degrees_per_second = rpm * 360.0 / 60.0
-        Node.get_logger().debug(f'spinning, RPM: {rpm}') 
+        debug(self.debug_drone, f'spinning, RPM: {rpm}') 
 
         # init
         if self.search_start_time is None:
@@ -519,10 +519,10 @@ class TaskManagerNode(Node):
             self.search_start_time = None   # reset search timer
             self.search_start_heading = None
 
-            Node.get_logger().debug(f'found object, changing to NAVIGATING') 
+            debug(self.debug_drone, f'found object, changing to NAVIGATING') 
             return State.NAVIGATING
         
-        Node.get_logger().debug(f'nothing found, continue SEARCHING') 
+        debug(self.debug_drone, f'nothing found, continue SEARCHING') 
         return State.SEARCHING
 
 # ----- NAVIGATE
@@ -538,7 +538,7 @@ class TaskManagerNode(Node):
         
         # if new extracted pt, recalculate approach
         if self.is_new_data_from_subscriber(self.extract_subscriber):
-            Node.get_logger().debug(f'new point extracted, recalculating approach') 
+            debug(self.debug_vbm, f'new point extracted, recalculating approach') 
 
             # convert that 3D point to NED, offset it above and towards the drone a bit
             FLU_pos = self.offsetPointFLU(self.extract_pt, [-0.5, 0, 0.5])
@@ -554,11 +554,11 @@ class TaskManagerNode(Node):
 
             # if the new waypoint is within a certain distance of the robot, switch to grasping state
             if self.isInPosNED(NED_pos, 0.5, 0.2):  #TODO: ROS-tunable params
-                Node.get_logger().debug(f'within range of object, begin GRASPING') 
+                debug(self.debug_vbm, f'within range of object, begin GRASPING') 
                 return State.GRASPING
 
         # stay in navigation state
-        Node.get_logger().debug(f'out of range, continue NAVIGATING') 
+        debug(self.debug_drone, f'out of range, continue NAVIGATING') 
         return State.NAVIGATING
 
 # -----
@@ -618,11 +618,11 @@ class TaskManagerNode(Node):
                 new_state = self.navigate()
             elif self.state == State.GRASPING:
                 # new_state = self.grasp()
-                Node.get_logger().debug(f'state action is HOLD (debug 2/28)') 
+                debug(self.debug_drone, f'state action is HOLD (debug 2/28)') 
                 new_state = self.hold()
             elif self.state == State.DEPOSITING:
                 # new_state = self.deposit()
-                Node.get_logger().debug(f'state action is HOLD (debug 2/28)') 
+                debug(self.debug_drone, f'state action is HOLD (debug 2/28)') 
                 new_state = self.hold()
             
             if self.checkForErrors():
