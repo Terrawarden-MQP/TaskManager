@@ -63,6 +63,8 @@ class TaskManagerNode(Node):
 
         # Topic for sending grasp to arm
         self.declare_parameter('arm_grasp_topic', 'joisie_grasp_send')
+        # Topic for sending grasp to arm WITH TRAJECTORY
+        self.declare_parameter('traj_arm_grasp_topic', 'joisie_grasp_send')
 
         # CustomArmMsg from Arm Node
         self.declare_parameter('arm_status_topic', 'joisie_arm_status')
@@ -147,6 +149,8 @@ class TaskManagerNode(Node):
                                                     self.get_parameter('centroid_topic').value, 10)
         self.grasp_publisher = self.create_publisher(PoseStamped, 
                                                     self.get_parameter('arm_grasp_topic').value, 10)
+        self.traj_grasp_publisher = self.create_publisher(PoseStamped, 
+                                                    self.get_parameter('traj_arm_grasp_topic').value, 10)
         self.state_publisher = self.create_publisher(String,
                                                     self.get_parameter('state_topic').value, 10)
                 
@@ -483,6 +487,10 @@ class TaskManagerNode(Node):
     def sendArmToPoint(self, poseStampedMsg, trajectory:bool=True):
         '''send ROSmsg to arm control node with a point'''
         # send posestamped to different topics depending wether trajectory is true or false
+        if trajectory:
+            self.publish_helper(self.traj_grasp_publisher, poseStampedMsg)
+        else:
+            self.publish_helper(self.grasp_publisher, poseStampedMsg)
 
         pass
     
