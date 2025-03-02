@@ -400,6 +400,46 @@ class TaskManagerNode(Node):
         return Point(last_setpoint.x + offset_ned.x, 
                     last_setpoint.y + offset_ned.y, 
                     last_setpoint.z + offset_ned.z)
+        
+    def FLU2NED_quaternion(self, FLUoffsetPoint: Point) -> Point:
+        """
+        Convert a local FLU offset in meters to global NED coordinates
+        Apply the current drone NED rotation quaternion to figure out the new point XYZ in the NED frame
+        """
+
+        # https://danceswithcode.net/engineeringnotes/quaternions/quaternions.html
+        def multiply_quaternion(q1: np.array, q2: np.array) -> np.array:
+            r0, r1, r2, r3 = q1
+            s0, s1, s2, s3 = q2
+            return np.array([
+                r0*s0 - r1*s1 - r2*s2 - r3*s3,
+                r0*s1 + r1*s0 - r2*s3 + r3*s2,
+                r0*s2 + r1*s3 + r2*s0 - r3*s1,
+                r0*s3 - r1*s2 + r2*s1 + r3*s0
+            ])
+        
+        # do it in numpy, convert FLU to FRD
+        point_np = np.array([0, FLUoffsetPoint.x, -FLUoffsetPoint.y, -FLUoffsetPoint.z])
+        
+        # Get the current orientation quaternion
+        #   Quaternion rotation from FRD body frame to reference frame
+        quat = self.telemetry.pos.orientation
+        quat_np = np.array([quat.w, quat.x,  quat.y, quat.z])
+        quat_np_conjugate = np.array([quat.w, -quat.x, -quat.y, -quat.z])
+        
+        # quaternion multiplication, it is commutative
+        # perform the passive rotation
+        rotated_point = multiply_quaternion(multiply_quaternion(quat_np, point_np), quat_np_conjugate)
+        
+        # extract the rotated point
+        NED_offset_point = Point(rotated_point[1], rotated_point[2], rotated_point[3])
+#TODO: may need to use the last_NED_pos from drone telemetry vs the last one that was sent out
+        last_setpoint = self.last_sent_messages[self.drone_publisher.topic].ned_pos
+
+        return Point(last_setpoint.x + NED_offset_point.x, 
+                    last_setpoint.y + NED_offset_point.y, 
+                    last_setpoint.z + NED_offset_point.z)
+         
 
     def droneHover(self):   
         """
@@ -412,7 +452,7 @@ class TaskManagerNode(Node):
         else:
             last_setpoint = self.last_sent_messages[self.drone_publisher.topic].ned_pos
         self.sendWaypointNED(Point(last_setpoint.x, last_setpoint.y, last_setpoint.z))
-        debug(self.debug_drone, f'drone hovering @ {last_setpoint}', throttle_duration_sec=1.0) 
+        self.debug(self.debug_drone, f'drone hovering @ {last_setpoint}', throttle_duration_sec=1.0) 
 
     def isInPosNED(self, NEDpoint: Point, toleranceXY: float, toleranceZ: float) -> bool:
         """
@@ -460,6 +500,7 @@ class TaskManagerNode(Node):
         roll = math.atan2(2.0*(qx*qy + qw*qz), qw*qw + qx*qx - qy*qy - qz*qz)
 
         return yaw, pitch, roll
+
     
     def heading_to_px4_yaw(self, heading: float) -> float:
         """
@@ -498,7 +539,6 @@ class TaskManagerNode(Node):
         pass
     
 
-
 # ----- SEARCH
 
     def search(self):
@@ -511,7 +551,7 @@ class TaskManagerNode(Node):
         # just slowly spin for now, slowly
         rpm = 2.0    
         degrees_per_second = rpm * 360.0 / 60.0
-        debug(self.debug_drone, f'spinning, RPM: {rpm}') 
+        self.debug(self.debug_drone, f'spinning, RPM: {rpm}') 
 
         # init
         if self.search_start_time is None:
@@ -537,10 +577,10 @@ class TaskManagerNode(Node):
             self.search_start_time = None   # reset search timer
             self.search_start_heading = None
 
-            debug(self.debug_drone, f'found object, changing to NAVIGATING') 
+            self.debug(self.debug_drone, f'found object, changing to NAVIGATING') 
             return State.NAVIGATING
         
-        debug(self.debug_drone, f'nothing found, continue SEARCHING') 
+        self.debug(self.debug_drone, f'nothing found, continue SEARCHING') 
         return State.SEARCHING
 
 # ----- NAVIGATE
@@ -556,11 +596,11 @@ class TaskManagerNode(Node):
         
         # if new extracted pt, recalculate approach
         if self.is_new_data_from_subscriber(self.extract_subscriber):
-            debug(self.debug_vbm, f'new point extracted, recalculating approach') 
+            self.debug(self.debug_vbm, f'new point extracted, recalculating approach') 
 
             # convert that 3D point to NED, offset it above and towards the drone a bit
             FLU_pos = self.offsetPointFLU(self.extract_pt, [-0.5, 0, 0.5])
-            NED_pos = self.FLU2NED(FLU_pos, heading_deg)
+            NED_pos = self.FLU2NED_quaternion(FLU_pos)
                     
             # calculate heading to point to turn towards it
             diff_north = NED_pos.x - self.telemetry.ned_pos.x
@@ -572,11 +612,11 @@ class TaskManagerNode(Node):
 
             # if the new waypoint is within a certain distance of the robot, switch to grasping state
             if self.isInPosNED(NED_pos, 0.5, 0.2):  #TODO: ROS-tunable params
-                debug(self.debug_vbm, f'within range of object, begin GRASPING') 
+                self.debug(self.debug_vbm, f'within range of object, begin GRASPING') 
                 return State.GRASPING
 
         # stay in navigation state
-        debug(self.debug_drone, f'out of range, continue NAVIGATING') 
+        self.debug(self.debug_drone, f'out of range, continue NAVIGATING') 
         return State.NAVIGATING
 
 # -----
@@ -620,46 +660,51 @@ class TaskManagerNode(Node):
 # ----- MAIN LOOP
 
     def main(self):
+        # Create a timer to run the main loop at 20Hz (0.05 seconds)
+        self.timer = self.create_timer(0.05, self.main_loop)
+        self.get_logger().info("Task Manager initialized with 20Hz timer")
+    
+    def main_loop(self):
+        state_msg = String()
+        state_msg.data = self.state.value
+        self.publish_helper(self.state_publisher, state_msg)
 
-        while True:
-            # Publish current state
-            self.publish_helper(self.state_publisher, self.state.value)
+        new_state = self.state
+        
+        if self.state == State.HOLD:
+            new_state = self.hold()
+        elif self.state == State.SEARCHING:
+            new_state = self.search()
+        elif self.state == State.NAVIGATING:
+            new_state = self.navigate()
+        elif self.state == State.GRASPING:
+            # new_state = self.grasp()
+            self.debug(self.debug_drone, f'state action is HOLD (debug 2/28)') 
+            new_state = self.hold()
+        elif self.state == State.DEPOSITING:
+            # new_state = self.deposit()
+            self.debug(self.debug_drone, f'state action is HOLD (debug 2/28)') 
+            new_state = self.hold()
+        
+        if self.checkForErrors():
+            new_state = State.HOLD
 
-            new_state = self.state
-            
-            if self.state == State.HOLD:
-                new_state = self.hold()
-            elif self.state == State.SEARCHING:
-                new_state = self.search()
-            elif self.state == State.NAVIGATING:
-                new_state = self.navigate()
-            elif self.state == State.GRASPING:
-                # new_state = self.grasp()
-                debug(self.debug_drone, f'state action is HOLD (debug 2/28)') 
-                new_state = self.hold()
-            elif self.state == State.DEPOSITING:
-                # new_state = self.deposit()
-                debug(self.debug_drone, f'state action is HOLD (debug 2/28)') 
-                new_state = self.hold()
-            
-            if self.checkForErrors():
-                new_state = State.HOLD
-
-            self.state = new_state
-
+        # Directly set _state to avoid setter loop
+        self.state = new_state
 
 
 def main(args=None):
     rclpy.init(args=args)
 
     manager_node = TaskManagerNode()
-
+    
+    # Start the main loop through the timer
+    manager_node.main()  
+    
+    # Now actually allow ROS to process callbacks
     rclpy.spin(manager_node)
 
-    # Destroy the node explicitly
-    # (optional - otherwise it will be done automatically
-    # when the garbage collector destroys the node object)
-    # color_detection_node.destroy_node()
+    manager_node.destroy_node()
     rclpy.shutdown()
 
 if __name__ == "__main__":
