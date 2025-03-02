@@ -23,6 +23,9 @@ class State(Enum):
     NAVIGATING = "NAV"
     GRASPING = "GRASP"
     DEPOSITING = "DEPOSIT"
+    
+# launch using the ros2 launch joisie_manager all_nodes
+# ros2 topic pub -1 /joisie_manager/joisie_set_state std_msgs/msg/String "{data: 'SEARCH'}"
 
 class TaskManagerNode(Node):
 
@@ -89,8 +92,8 @@ class TaskManagerNode(Node):
         # -----
 
 
-        self.declare_parameter('debug', '0b11111')
-        debug = int(self.get_parameter('debug').value,2)
+        self.declare_parameter('debug', 0b11111)
+        debug = self.get_parameter('debug').value
         self.debug_publish  = bool(debug & 0b10000)
         self.debug_drone    = bool(debug & 0b01000)
         self.debug_detect   = bool(debug & 0b00100)
@@ -478,12 +481,12 @@ class TaskManagerNode(Node):
 # ----- ARM HELPERS
     def openGripper(self):
         '''send ROSmsg to arm control node to open gripper'''
-        pass
+        self.publish_helper(self.gripper_publisher, True)
     
     def closeGripper(self):
         '''send ROSmsg to arm control node to close gripper'''
-        pass
-
+        self.publish_helper(self.gripper_publisher, False)
+        
     def sendArmToPoint(self, poseStampedMsg, trajectory:bool=True):
         '''send ROSmsg to arm control node with a point'''
         # send posestamped to different topics depending wether trajectory is true or false
@@ -619,9 +622,8 @@ class TaskManagerNode(Node):
     def main(self):
 
         while True:
-
             # Publish current state
-            self.publish_helper(self.state_publisher,self.state.value)
+            self.publish_helper(self.state_publisher, self.state.value)
 
             new_state = self.state
             
