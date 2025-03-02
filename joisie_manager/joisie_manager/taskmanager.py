@@ -629,6 +629,19 @@ class TaskManagerNode(Node):
     def checkForErrors(self):
         # Read most recent Telemetry and ArmStatus data
         # Set mode to State.HOLD if any errors
+        if self.is_new_data_from_subscriber(self.telemetry_subscriber):
+            
+            # check that we have more than 0.35m of ground clearance beneath the drone
+            if self.telemetry.altitude_above_ground_m < 0.35:
+                # check that we are not too low
+                self.debug(self.debug_drone, "Ground Too Close, Abort")
+                return True          
+            
+            if self.telemetry.altitude_above_ground_m < 0.6:
+                # check that we are not too low
+                self.debug(self.debug_drone, "Ground Proximity Warning")
+                return False
+                
         return False # TODO
 
 # -----
