@@ -6,8 +6,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import Image
 from std_msgs.msg import String, Bool, Header
 from vision_msgs.msg import Detection2D
-from terrawarden_interfaces.msg import DroneTelemetry
-from terrawarden_interfaces.msg import DroneWaypoint
+from terrawarden_interfaces.msg import DroneTelemetry, DroneWaypoint
 from geometry_msgs.msg import Pose2D, Point, PoseWithCovariance, PoseStamped
 import tf2_ros
 # import transformations
@@ -34,12 +33,12 @@ class TaskManagerNode(Node):
         
         # drone flight parameters dictionary
         self.drone_params = {
-            "fast_max_lin_vel_m_s": 8,
-            "fast_max_ang_vel_deg_s": 90,
-            "fast_max_lin_accel_m_s2": 1,
-            "fast_max_z_vel_m_s": 2,
-            "precision_max_lin_vel_m_s": 1,
-            "precision_max_ang_vel_deg_s": 30,
+            "fast_max_lin_vel_m_s": 8.0,
+            "fast_max_ang_vel_deg_s": 90.0,
+            "fast_max_lin_accel_m_s2": 1.0,
+            "fast_max_z_vel_m_s": 2.0,
+            "precision_max_lin_vel_m_s": 1.0,
+            "precision_max_ang_vel_deg_s": 30.0,
             "precision_max_lin_accel_m_s2": 0.4,
             "precision_max_z_vel_m_s": 0.5,
         }
@@ -103,6 +102,11 @@ class TaskManagerNode(Node):
                                f" Detection {self.debug_detect}, VBM {self.debug_vbm}, Arm {self.debug_arm}")
         # INITIAL STATE
         self._state = State.HOLD
+        self._telemetry = DroneTelemetry()
+        self._detection = Detection2D()
+        self._extract_pt = Point()
+        self._raw_grasp = PoseStamped()
+        # self._arm_status = DynaArmStatus()
 
         # STORE PREVIOUS MESSAGE SENT PER TOPIC
         self.last_sent_messages = {}
@@ -168,6 +172,8 @@ class TaskManagerNode(Node):
             # self.arm_status_subscriber.topic: False,
         }  
 
+        self.init_loop()
+
     #
     #### SET UP INCOMING MESSAGES AS PROPERTIES SO WE CAN KEEP TRACK OF WHAT
     #### NEW INFORMATION HAS / HASN'T BEEN ACCESSED
@@ -198,7 +204,7 @@ class TaskManagerNode(Node):
             string = ros_msg.data
             self.state = State(string)
         except:
-            print("No matching state for string:", string)
+            self.debug(True, f"[WARNING] No matching state for string: {string}")
 
     @property
     def detection(self) -> Detection2D:
@@ -328,10 +334,6 @@ class TaskManagerNode(Node):
         
         # send waypoint by creating a PoseStamped message
         waypoint_msg = DroneWaypoint()
-        header = Header()
-        header.stamp = self.get_clock().now().to_msg()
-        header.frame_id = "droneNED"  # Replace with your desired frame ID
-        waypoint_msg.header = header
 
         # Set the pose data 
         waypoint_msg.ned_pos = NEDpoint
@@ -363,7 +365,7 @@ class TaskManagerNode(Node):
             waypoint_msg.max_lin_accel_m_s2 = self.drone_params["precision_max_lin_accel_m_s2"]     
     
         self.drone_publisher.publish(waypoint_msg)  
-        Node.get_logger().debug(f'waypoint message: {waypoint_msg}', throttle_duration_sec=1.0) 
+        self.get_logger().debug(f'waypoint message: {waypoint_msg}') 
     
     
     def offsetPointFLU(self, FLUpoint: Point, FLUoffset: Point) -> Point:
@@ -373,7 +375,7 @@ class TaskManagerNode(Node):
         FLUoffset = to offset the point in the local FLU drone frame                
         """
         
-        return Point(FLUpoint.x + FLUoffset.x, FLUpoint.y + FLUoffset.y, FLUpoint.z + FLUoffset.z)
+        return Point(x=FLUpoint.x + FLUoffset.x, y=FLUpoint.y + FLUoffset.y, z=FLUpoint.z + FLUoffset.z)
 
     def FLU2NED(self, FLUoffsetPoint: Point, heading_deg: float = None) -> Point:
     
@@ -397,9 +399,9 @@ class TaskManagerNode(Node):
         
         last_setpoint = self.last_sent_messages[self.drone_publisher.topic].ned_pos
 
-        return Point(last_setpoint.x + offset_ned.x, 
-                    last_setpoint.y + offset_ned.y, 
-                    last_setpoint.z + offset_ned.z)
+        return Point(x=last_setpoint.x + offset_ned.x, 
+                    y=last_setpoint.y + offset_ned.y, 
+                    z=last_setpoint.z + offset_ned.z)
         
     def FLU2NED_quaternion(self, FLUoffsetPoint: Point) -> Point:
         """
@@ -432,13 +434,13 @@ class TaskManagerNode(Node):
         rotated_point = multiply_quaternion(multiply_quaternion(quat_np, point_np), quat_np_conjugate)
         
         # extract the rotated point
-        NED_offset_point = Point(rotated_point[1], rotated_point[2], rotated_point[3])
+        NED_offset_point = Point(x=rotated_point[1], y=rotated_point[2], z=rotated_point[3])
 #TODO: may need to use the last_NED_pos from drone telemetry vs the last one that was sent out
         last_setpoint = self.last_sent_messages[self.drone_publisher.topic].ned_pos
 
-        return Point(last_setpoint.x + NED_offset_point.x, 
-                    last_setpoint.y + NED_offset_point.y, 
-                    last_setpoint.z + NED_offset_point.z)
+        return Point(x=last_setpoint.x + NED_offset_point.x, 
+                    y=last_setpoint.y + NED_offset_point.y, 
+                    z=last_setpoint.z + NED_offset_point.z)
          
 
     def droneHover(self):   
@@ -448,11 +450,12 @@ class TaskManagerNode(Node):
         """
         if (self.drone_publisher.topic not in self.last_sent_messages or 
             self.last_sent_messages[self.drone_publisher.topic] is None):
-            last_setpoint = self.telemetry.ned_pos
+            telemetry_point = self.telemetry.pos.pose.position
+            last_setpoint = Point(x=telemetry_point.x, y=telemetry_point.y, z=telemetry_point.z)
         else:
             last_setpoint = self.last_sent_messages[self.drone_publisher.topic].ned_pos
-        self.sendWaypointNED(Point(last_setpoint.x, last_setpoint.y, last_setpoint.z))
-        self.debug(self.debug_drone, f'drone hovering @ {last_setpoint}', throttle_duration_sec=1.0) 
+        self.sendWaypointNED(Point(x=last_setpoint.x, y=last_setpoint.y, z=last_setpoint.z))
+        self.debug(self.debug_drone, f'drone hovering @ {last_setpoint}')
 
     def isInPosNED(self, NEDpoint: Point, toleranceXY: float, toleranceZ: float) -> bool:
         """
@@ -603,8 +606,8 @@ class TaskManagerNode(Node):
             NED_pos = self.FLU2NED_quaternion(FLU_pos)
                     
             # calculate heading to point to turn towards it
-            diff_north = NED_pos.x - self.telemetry.ned_pos.x
-            diff_east = NED_pos.y - self.telemetry.ned_pos.y
+            diff_north = NED_pos.x - self.telemetry.pos.x
+            diff_east = NED_pos.y - self.telemetry.pos.y
             px4_yaw_rad = math.atan2(diff_east, diff_north) 
             heading_deg = self.px4_yaw_to_heading(px4_yaw_rad)            
             
@@ -672,7 +675,7 @@ class TaskManagerNode(Node):
 
 # ----- MAIN LOOP
 
-    def main(self):
+    def init_loop(self):
         # Create a timer to run the main loop at 20Hz (0.05 seconds)
         self.timer = self.create_timer(0.05, self.main_loop)
         self.get_logger().info("Task Manager initialized with 20Hz timer")
@@ -711,10 +714,7 @@ def main(args=None):
 
     manager_node = TaskManagerNode()
     
-    # Start the main loop through the timer
-    manager_node.main()  
-    
-    # Now actually allow ROS to process callbacks
+    # # Now actually allow ROS to process callbacks
     rclpy.spin(manager_node)
 
     manager_node.destroy_node()
