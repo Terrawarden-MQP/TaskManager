@@ -478,10 +478,12 @@ class TaskManagerNode(Node):
 # ----- ARM HELPERS
     def openGripper(self):
         '''send ROSmsg to arm control node to open gripper'''
+        self.publish_helper(self.gripper_publisher, True)
         pass
     
     def closeGripper(self):
         '''send ROSmsg to arm control node to close gripper'''
+        self.publish_helper(self.gripper_publisher, False)
         pass
 
     def sendArmToPoint(self, poseStampedMsg, trajectory:bool=True):
