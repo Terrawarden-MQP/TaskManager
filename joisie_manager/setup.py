@@ -15,7 +15,7 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='Terrawarden Drone Cleanup MQP',
+    maintainer='WPI Terrawarden Drone Cleanup MQP',
     maintainer_email='gr-dronecleanup@wpi.edu',
     description='ROS2 package for managing aerial manipulator code flow',
     license='MIT License',
