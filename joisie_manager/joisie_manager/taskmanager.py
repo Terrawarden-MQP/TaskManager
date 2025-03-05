@@ -7,7 +7,7 @@ from sensor_msgs.msg import Image
 from std_msgs.msg import String, Bool, Header
 from vision_msgs.msg import Detection2D
 from terrawarden_interfaces.msg import DroneTelemetry, DroneWaypoint
-from geometry_msgs.msg import Pose2D, Point, PoseWithCovariance, PoseStamped
+from geometry_msgs.msg import Pose2D, Point, PointStamped, PoseWithCovariance, PoseStamped
 import tf2_ros
 # import transformations
 import cv2
@@ -15,6 +15,7 @@ import numpy as np
 import os
 import math
 from enum import Enum, auto
+import time
 
 class State(Enum):
     HOLD = "HOLD"
@@ -110,7 +111,7 @@ class TaskManagerNode(Node):
 
         # STORE PREVIOUS MESSAGE SENT PER TOPIC
         self.last_sent_messages = {}
-        self.received_new = {}      
+        self.msg_timeout = 3
 
         # search state tracking
         self.search_start_time = None
@@ -135,7 +136,7 @@ class TaskManagerNode(Node):
                                                     self.get_parameter('drone_telemetry_topic').value, 
                                                     self.get_setter("telemetry"), 10)
         
-        self.extract_subscriber = self.create_subscription(Point,
+        self.extract_subscriber = self.create_subscription(PointStamped,
                                                     self.get_parameter('vbm_extract_topic').value,
                                                     self.get_setter("extract_pt"), 10)
         
@@ -167,7 +168,7 @@ class TaskManagerNode(Node):
             # self.image_subscriber.topic: False,
             self.detection_subscriber.topic: False,
             self.telemetry_subscriber.topic: False,
-            self.extract_subscriber: False,
+            self.extract_subscriber.topic: False,
             self.grasp_subscriber.topic: False,
             # self.arm_status_subscriber.topic: False,
         }  
@@ -193,16 +194,16 @@ class TaskManagerNode(Node):
 
     @state.setter
     def state(self, value) -> State:
-        self._state = value
         if value not in State:
             raise ValueError(f"Invalid state: {value}")
-        self._state = State.HOLD
+        self._state = value
     
     def receive_desired_state(self, ros_msg: String):
         self.received_new[self.state_setter_subscriber.topic] = True
         try:
             string = ros_msg.data
             self.state = State(string)
+            self.debug(True, f"State changed due to incoming message: {string}")
         except:
             self.debug(True, f"[WARNING] No matching state for string: {string}")
 
@@ -251,14 +252,14 @@ class TaskManagerNode(Node):
 
 
     @property
-    def extract_pt(self) -> Point:
+    def extract_pt(self) -> PointStamped:
         self.received_new[self.extract_subscriber.topic] = False
         return self._extract_pt
     
     @extract_pt.setter
-    def extract_pt(self, ros_msg: Point):
+    def extract_pt(self, ros_msg: PointStamped):
         self.received_new[self.extract_subscriber.topic] = True
-        self._extract_pt = ros_msg
+        self._extract_pt = ros_msg.point
 
 
     # @property
@@ -285,16 +286,23 @@ class TaskManagerNode(Node):
             self.debug(self.debug_publish, f"Topic - {publisher.topic}\tMessage - {message}")
 
             publisher.publish(message)
-            self.last_sent_messages[publisher.topic] = message
+            self.last_sent_messages[publisher.topic] = {"msg": message, "time": time.time()}
 
     def is_outgoing_new_msg(self, publisher, message):
         '''RETURNS TRUE IF THIS IS A NEW OUTGOING MESSAGE'''
         return not (publisher.topic in self.last_sent_messages 
-                    and self.last_sent_messages[publisher.topic] == message)
+                    and self.last_sent_messages[publisher.topic]["msg"] == message
+                    # Additionally, send message if previous message is more than {self.msg_timeout} seconds old
+                    and self.last_sent_messages[publisher.topic]["time"] > time.time() - self.msg_timeout)
     
     def is_new_data_from_subscriber(self, subscriber):
         '''RETURNS TRUE IF THERE WAS A NEW MESSAGE RECEIVED ON THIS SUBSCRIBER'''
         return self.received_new[subscriber.topic]
+
+    def get_last_sent_message(self, publisher):
+        if not publisher.topic in self.last_sent_messages:
+            return None
+        return self.last_sent_messages[publisher.topic]["msg"]
 
     def debug(self, if_debug, string):
         if if_debug:
@@ -313,7 +321,6 @@ class TaskManagerNode(Node):
 
     def grasp(self):
         self.droneHover()
-        self.processDetection()
         
         # calculate grasp
         # generate posestamped message from grastp
@@ -364,7 +371,7 @@ class TaskManagerNode(Node):
         else:
             waypoint_msg.max_lin_accel_m_s2 = self.drone_params["precision_max_lin_accel_m_s2"]     
     
-        self.drone_publisher.publish(waypoint_msg)  
+        self.publish_helper(self.drone_publisher, waypoint_msg)  
         self.get_logger().debug(f'waypoint message: {waypoint_msg}') 
     
     
@@ -397,7 +404,7 @@ class TaskManagerNode(Node):
         # convert to NED coordinates
         offset_ned = Point(x=rotated_flu_x, y=rotated_flu_y, z=-rotated_flu_z)
         
-        last_setpoint = self.last_sent_messages[self.drone_publisher.topic].ned_pos
+        last_setpoint = self.get_last_sent_message(self.drone_publisher).ned_pos
 
         return Point(x=last_setpoint.x + offset_ned.x, 
                     y=last_setpoint.y + offset_ned.y, 
@@ -436,7 +443,7 @@ class TaskManagerNode(Node):
         # extract the rotated point
         NED_offset_point = Point(x=rotated_point[1], y=rotated_point[2], z=rotated_point[3])
 #TODO: may need to use the last_NED_pos from drone telemetry vs the last one that was sent out
-        last_setpoint = self.last_sent_messages[self.drone_publisher.topic].ned_pos
+        last_setpoint = self.get_last_sent_message(self.drone_publisher).ned_pos
 
         return Point(x=last_setpoint.x + NED_offset_point.x, 
                     y=last_setpoint.y + NED_offset_point.y, 
@@ -445,15 +452,13 @@ class TaskManagerNode(Node):
 
     def droneHover(self):   
         """
-        Sends last waypoint to drone as new waypoint, essentially tells it to stay where it is.
-        Raises RuntimeError if no previous waypoint exists.
+        Sends last waypoint to drone as new waypoint, essentially tells it to stay where it is.    
         """
-        if (self.drone_publisher.topic not in self.last_sent_messages or 
-            self.last_sent_messages[self.drone_publisher.topic] is None):
+        if (self.get_last_sent_message(self.drone_publisher) is None):
             telemetry_point = self.telemetry.pos.pose.position
             last_setpoint = Point(x=telemetry_point.x, y=telemetry_point.y, z=telemetry_point.z)
         else:
-            last_setpoint = self.last_sent_messages[self.drone_publisher.topic].ned_pos
+            last_setpoint = self.get_last_sent_message(self.drone_publisher).ned_pos
         self.sendWaypointNED(Point(x=last_setpoint.x, y=last_setpoint.y, z=last_setpoint.z))
         self.debug(self.debug_drone, f'drone hovering @ {last_setpoint}')
 
@@ -462,10 +467,15 @@ class TaskManagerNode(Node):
         Returns true if drone's location is at given NEDpoint plus or minus given tolerance
         Otherwise returns false
         """
+        last_sent = self.get_last_sent_message(self.drone_publisher)
 
-        last_X_setpoint = self.last_sent_messages[self.drone_publisher.topic].ned_pos.x
-        last_Y_setpoint = self.last_sent_messages[self.drone_publisher.topic].ned_pos.y
-        last_Z_setpoint = self.last_sent_messages[self.drone_publisher.topic].ned_pos.z
+        if last_sent is None:
+            return False
+
+        last_X_setpoint = last_sent.ned_pos.x
+        last_Y_setpoint = last_sent.ned_pos.y
+        last_Z_setpoint = last_sent.ned_pos.z
+        self.debug(self.debug_vbm,f'NED point from VBM: ({NEDpoint.x},{NEDpoint.y},{NEDpoint.z})')
         
         if abs(last_X_setpoint - NEDpoint.x) > toleranceXY:
             return False
@@ -568,11 +578,14 @@ class TaskManagerNode(Node):
         desired_heading = (self.search_start_heading + elapsed * degrees_per_second) % 360.0
 
         # send waypoint maintaining position but rotating
-        self.sendWaypointNED(
-            self.last_sent_messages[self.drone_publisher.topic].ned_pos,   
-            heading=desired_heading,
-            max_ang_vel_deg_s=degrees_per_second * 1.2  # 20% for smoothness
-        )
+        if self.get_last_sent_message(self.drone_publisher) is not None:
+            self.sendWaypointNED(
+                self.get_last_sent_message(self.drone_publisher).ned_pos,   
+                heading=desired_heading,
+                max_ang_vel_deg_s=degrees_per_second * 1.2  # 20% for smoothness
+            )
+        # else:
+        #     self.debug(self.debug_drone, f"Drone publisher history None; {self.last_sent_messages}")
 
 
         # detection found, transition states
@@ -593,17 +606,16 @@ class TaskManagerNode(Node):
         Perform approach sequence
         No inputs, no outputs
         """
-
-        # # OPTIONAL: this would be used to make decisions based on when there's new 2d data
-        # bbox = self.processDetection()
+        
+        #TODO: if object is lost for 10s + and you hover at position, go back to search
         
         # if new extracted pt, recalculate approach
         if self.is_new_data_from_subscriber(self.extract_subscriber):
             self.debug(self.debug_vbm, f'new point extracted, recalculating approach') 
 
             # convert that 3D point to NED, offset it above and towards the drone a bit
-            FLU_pos = self.offsetPointFLU(self.extract_pt, [-0.5, 0, 0.5])
-            NED_pos = self.FLU2NED_quaternion(FLU_pos)
+            FLU_pos = self.offsetPointFLU(self.extract_pt, Point(x=-0.5, y=0., z=0.5))
+            NED_pos = self.FLU2NED_quaternion(FLU_pos) # TODO this function needs a Pose/PoseStamped yet asks only for a Point and only a Point is available here, is this right?
                     
             # calculate heading to point to turn towards it
             diff_north = NED_pos.x - self.telemetry.pos.x
@@ -647,38 +659,12 @@ class TaskManagerNode(Node):
                 
         return False # TODO
 
-# -----
-
-    # Checks for detected object, publishes 2D point, triggers extracting 3D point from VBM (and 3D grasp pose depending on state)
-    def processDetection(self):
-        """returns 3d point if new information is recieved from subscriber
-        returns false if no new information
-        """
-        if self.is_new_data_from_subscriber(self.detection_subscriber):
-            # DETECTION CONFIDENCE - USEFUL FOR DEBUG
-            probability = self.detection.results[0].score
-
-            #TODO: check errors if there is not box
-
-            # FULL BOUNDING BOX OF DETECTED OBJECT
-            bounding_box = self.detection.bbox
-
-            self.debug(self.debug_detect, f"Detected object at {bounding_box.center} with probability {probability}")
-
-            # PUBLISH MESSAGE USING HELPER FUNCTION (WITH EXTRA DEBUG TERM FOR DISPLAYING PROBABILITY)
-            self.publish_helper(self.centroid_publisher, bounding_box.center)
-
-            return bounding_box
-        
-        # RETURN FALSE IF NO NEW INFO FROM SUBSCRIBER
-        return False
-
 # ----- MAIN LOOP
 
     def init_loop(self):
         # Create a timer to run the main loop at 20Hz (0.05 seconds)
         self.timer = self.create_timer(0.05, self.main_loop)
-        self.get_logger().info("Task Manager initialized with 20Hz timer")
+        self.debug(True, "Task Manager initialized with 20Hz timer")
     
     def main_loop(self):
         state_msg = String()
@@ -703,10 +689,12 @@ class TaskManagerNode(Node):
             new_state = self.hold()
         
         if self.checkForErrors():
+            self.debug(True, "ERRORS FOUND - MOVING TO HOLD STATE")
             new_state = State.HOLD
 
         # Directly set _state to avoid setter loop
-        self.state = new_state
+        if not self.is_new_data_from_subscriber(self.state_setter_subscriber):
+            self.state = new_state
 
 
 def main(args=None):
