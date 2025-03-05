@@ -105,6 +105,7 @@ class TaskManagerNode(Node):
         # INITIAL STATE
         self._state = State.HOLD
         self._telemetry = DroneTelemetry()
+        self.telemetry_queue = []
         self._detection = Detection2D()
         self._extract_pt = PointStamped()
         self._raw_grasp = PoseStamped()
@@ -265,7 +266,7 @@ class TaskManagerNode(Node):
     @extract_pt.setter
     def extract_pt(self, ros_msg: PointStamped):
         self.received_new[self.extract_subscriber.topic] = True
-        self._extract_pt = ros_msg.point
+        self._extract_pt = ros_msg
 
 
     # @property
@@ -463,6 +464,9 @@ class TaskManagerNode(Node):
         if timestamp is None:
             quat = self.telemetry.pos.pose.orientation
         else: #TODO: make it look for the last known quaternion closest to the timestamp
+            # rospy time include __ge__ attribute for times
+            #for telemetry in queue(telemetry):
+            
             quat = self.telemetry.pos.pose.orientation
         quat_np = np.array([quat.w, quat.x,  quat.y, quat.z])
         quat_np_conjugate = np.array([quat.w, -quat.x, -quat.y, -quat.z])
@@ -647,9 +651,8 @@ class TaskManagerNode(Node):
             self.debug(self.debug_vbm, f'new point extracted, recalculating approach') 
 
             # convert that 3D point to NED, offset it above and towards the drone a bit
-            FLU_pos = self.offsetPointFLU(self.extract_pt, Point(x=-0.5, y=0., z=0.5))
-            print("Timestamp in what units jeopardy?", self.extract_pt.header.stamp)
-            print("Timestamp in what units jeopardy?", float(self.extract_pt.header.stamp))
+            # self.debug(self.debug_vbm, f"Timestamp in what units jeopardy? {self.extract_pt.header.stamp}")
+            FLU_pos = self.offsetPointFLU(self.extract_pt.point, Point(x=-0.5, y=0., z=0.5))
             NED_pos = self.FLU2NED_quaternion(FLU_pos, self.extract_pt.header.stamp) 
                     
             # calculate heading to point to turn towards it
