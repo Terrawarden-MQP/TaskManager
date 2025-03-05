@@ -14,8 +14,13 @@ def generate_launch_description():
         DeclareLaunchArgument("image_topic", default_value="/camera/camera/color/image_raw", description="Topic for receiving raw image from camera"),
         DeclareLaunchArgument("detection_topic", default_value="joisie_detection", description="Topic for receiving Detection from LiveDetect Node"),
         # DeclareLaunchArgument("centroid_topic", default_value="joisie_detected_centroid", description="Topic for sending detected object centroid to VBM"), # SEE coord_topic
-        DeclareLaunchArgument("drone_pose_topic", default_value="joisie_target_pose", description="Topic for sending target pose to drone"),
         DeclareLaunchArgument("vbm_extract_topic",default_value="joisie_extract_centroid", description="Topic for receiving 3D Point from VBM extract_cluster"),
+        
+        #Drone topics        
+        DeclareLaunchArgument("drone_pose_topic", default_value="drone/waypoing", description="Topic for sending target pose to drone"),
+        DeclareLaunchArgument('drone_telemetry_topic', default_value='drone/telemetry', description='Topic for receiving drone telemetry'),
+
+
         # DeclareLaunchArgument("vbm_grasp_topic", default_value="joisie_grasp_read", description="Topic for receiving grasp from VBM"), # SEE pos_topic
         DeclareLaunchArgument('pos_topic', default_value='joisie_grasp_read', description='Grasp pose topic'),
         DeclareLaunchArgument("arm_grasp_topic", default_value="joisie_grasp_send", description="Topic for sending grasp to arm"),
@@ -24,11 +29,12 @@ def generate_launch_description():
         DeclareLaunchArgument("state_setter_topic", default_value="joisie_set_state", description="Topic for setting states"),
         DeclareLaunchArgument("state_topic",default_value="joisie_state",description="Topic to publish task manager state information"),
         DeclareLaunchArgument("manager_debug",default_value="0b11111",description="Flags for selecting which sections of code to debug"),
+        
         # VBM arguments
         DeclareLaunchArgument('log_level', default_value='INFO', description='Log verbosity level'),
         DeclareLaunchArgument('cluster_topic', default_value='/detected_cluster', description='Cluster topic name'),
         DeclareLaunchArgument('pointcloud_topic', default_value='/camera/camera/depth/color/points', description='Pointcloud topic name'),
-        DeclareLaunchArgument('coord_topic', default_value='/joisie_vision/detected_object_centroid', description='2D centroid target coordinates topic'),
+        DeclareLaunchArgument('coord_topic', default_value='/detected_object_centroid', description='2D centroid target coordinates topic'),
         DeclareLaunchArgument('camera_info_topic_depth', default_value='/camera/camera/aligned_depth_to_color/camera_info', description='Camera depth image info topic'),
         DeclareLaunchArgument('camera_info_topic_color', default_value='/camera/camera/color/camera_info', description='Camera color image info topic'),
         DeclareLaunchArgument('camera_depth_topic', default_value='/camera/camera/aligned_depth_to_color/image_raw', description='Camera depth image topic'),
@@ -80,7 +86,7 @@ def generate_launch_description():
         ),
         Node(
             package="joisie_vision",
-            namespace="joisie_vision",
+            # namespace="joisie_vision",
             executable="color_detection",
             parameters=[{
                     "topic":"/camera/camera/color/image_raw",
@@ -89,7 +95,7 @@ def generate_launch_description():
         ),
         Node(
             package="joisie_manager",
-            namespace="joisie_manager",
+            # namespace="joisie_manager",
             executable="task_manager",
             parameters=[{
                 # "image_topic": LaunchConfiguration("image_topic"),
