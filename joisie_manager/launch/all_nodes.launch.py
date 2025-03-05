@@ -84,6 +84,15 @@ def generate_launch_description():
                     "align_depth.enable":"true"
                 }.items() 
         ),
+        IncludeLaunchDescription(
+            FindPackageShare('wpi_drone').find('wpi_drone') + '/launch/vehicle_position.launch.py',
+            launch_arguments=
+                {
+                    "debug_printout":"false",
+                    "drone_pose_topic": LaunchConfiguration("drone_pose_topic"),
+                    "drone_telemetry_topic": LaunchConfiguration("drone_telemetry_topic"),
+                }.items() 
+        ),
         Node(
             package="joisie_vision",
             # namespace="joisie_vision",
