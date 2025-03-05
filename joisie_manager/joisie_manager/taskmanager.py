@@ -23,6 +23,7 @@ class State(Enum):
     NAVIGATING = "NAV"
     GRASPING = "GRASP"
     DEPOSITING = "DEPOSIT"
+    WAITING = "WAIT"
     
 # launch using the ros2 launch joisie_manager all_nodes
 # ros2 topic pub -1 /joisie_manager/joisie_set_state std_msgs/msg/String "{data: 'SEARCH'}"
@@ -105,7 +106,7 @@ class TaskManagerNode(Node):
         self._state = State.HOLD
         self._telemetry = DroneTelemetry()
         self._detection = Detection2D()
-        self._extract_pt = Point()
+        self._extract_pt = PointStamped()
         self._raw_grasp = PoseStamped()
         # self._arm_status = DynaArmStatus()
 
@@ -116,6 +117,11 @@ class TaskManagerNode(Node):
         # search state tracking
         self.search_start_time = None
         self.search_start_heading = None
+
+        # waiting state variables
+        self.next_state = State.HOLD
+        self._wait_time = 0
+        self._wait_start_time = 0
 
         # -----
     # SUBSCRIBERS
@@ -309,6 +315,27 @@ class TaskManagerNode(Node):
             # Node name, topic, message, extra debug info (if present)
             self.get_logger().info(string)
 
+# ----- WAIT
+
+    @property
+    def wait_time(self) -> float:
+        return self._wait_time
+    
+    @wait_time.setter
+    def wait_time(self, val: float):
+        self._wait_start_time = time.time()
+        self._wait_time = val
+
+    def set_wait(self, next_state: State, wait_time: float):
+        self.wait_time = wait_time
+        self.next_state = next_state
+        return State.WAITING
+
+    def wait(self):
+        if time.time() > self._wait_start_time + self.wait_time:
+            return self.next_state
+        return State.WAITING
+
 # ----- HOLD
 
     def hold(self):  
@@ -410,9 +437,10 @@ class TaskManagerNode(Node):
                     y=last_setpoint.y + offset_ned.y, 
                     z=last_setpoint.z + offset_ned.z)
         
-    def FLU2NED_quaternion(self, FLUoffsetPoint: Point) -> Point:
+    def FLU2NED_quaternion(self, FLUoffsetPoint: Point, timestamp: float = None) -> Point:
         """
         Convert a local FLU offset in meters to global NED coordinates
+        Accepts a ROS2 timestamp in nanoseconds since epoch??? and if specified grabs the quaternion at that point in time
         Apply the current drone NED rotation quaternion to figure out the new point XYZ in the NED frame
         """
 
@@ -426,13 +454,16 @@ class TaskManagerNode(Node):
                 r0*s2 + r1*s3 + r2*s0 - r3*s1,
                 r0*s3 - r1*s2 + r2*s1 + r3*s0
             ])
-        
         # do it in numpy, convert FLU to FRD
+        
         point_np = np.array([0, FLUoffsetPoint.x, -FLUoffsetPoint.y, -FLUoffsetPoint.z])
         
         # Get the current orientation quaternion
         #   Quaternion rotation from FRD body frame to reference frame
-        quat = self.telemetry.pos.pose.orientation
+        if timestamp is None:
+            quat = self.telemetry.pos.pose.orientation
+        else: #TODO: make it look for the last known quaternion closest to the timestamp
+            quat = self.telemetry.pos.pose.orientation
         quat_np = np.array([quat.w, quat.x,  quat.y, quat.z])
         quat_np_conjugate = np.array([quat.w, -quat.x, -quat.y, -quat.z])
         
@@ -615,7 +646,9 @@ class TaskManagerNode(Node):
 
             # convert that 3D point to NED, offset it above and towards the drone a bit
             FLU_pos = self.offsetPointFLU(self.extract_pt, Point(x=-0.5, y=0., z=0.5))
-            NED_pos = self.FLU2NED_quaternion(FLU_pos) 
+            print("Timestamp in what units jeopardy?", self.extract_pt.header.stamp)
+            print("Timestamp in what units jeopardy?", float(self.extract_pt.header.stamp))
+            NED_pos = self.FLU2NED_quaternion(FLU_pos, self.extract_pt.header.stamp) 
                     
             # calculate heading to point to turn towards it
             diff_north = NED_pos.x - self.telemetry.pos.pose.position.x
@@ -687,7 +720,9 @@ class TaskManagerNode(Node):
             new_state = self.deposit()
             # self.debug(self.debug_drone, f'state action is HOLD (debug 2/28)') 
             # new_state = self.hold()
-        
+        elif self.state == State.WAITING:
+            new_state = self.wait()
+            
         if self.checkForErrors():
             self.debug(True, "ERRORS FOUND - MOVING TO HOLD STATE")
             new_state = State.HOLD
