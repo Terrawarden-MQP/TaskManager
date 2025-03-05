@@ -432,7 +432,7 @@ class TaskManagerNode(Node):
         
         # Get the current orientation quaternion
         #   Quaternion rotation from FRD body frame to reference frame
-        quat = self.telemetry.pos.orientation
+        quat = self.telemetry.pos.pose.orientation
         quat_np = np.array([quat.w, quat.x,  quat.y, quat.z])
         quat_np_conjugate = np.array([quat.w, -quat.x, -quat.y, -quat.z])
         
@@ -615,11 +615,11 @@ class TaskManagerNode(Node):
 
             # convert that 3D point to NED, offset it above and towards the drone a bit
             FLU_pos = self.offsetPointFLU(self.extract_pt, Point(x=-0.5, y=0., z=0.5))
-            NED_pos = self.FLU2NED_quaternion(FLU_pos) # TODO this function needs a Pose/PoseStamped yet asks only for a Point and only a Point is available here, is this right?
+            NED_pos = self.FLU2NED_quaternion(FLU_pos) 
                     
             # calculate heading to point to turn towards it
-            diff_north = NED_pos.x - self.telemetry.pos.x
-            diff_east = NED_pos.y - self.telemetry.pos.y
+            diff_north = NED_pos.x - self.telemetry.pos.pose.position.x
+            diff_east = NED_pos.y - self.telemetry.pos.pose.position.y
             px4_yaw_rad = math.atan2(diff_east, diff_north) 
             heading_deg = self.px4_yaw_to_heading(px4_yaw_rad)            
             
@@ -680,13 +680,13 @@ class TaskManagerNode(Node):
         elif self.state == State.NAVIGATING:
             new_state = self.navigate()
         elif self.state == State.GRASPING:
-            # new_state = self.grasp()
-            self.debug(self.debug_drone, f'state action is HOLD (debug 2/28)') 
-            new_state = self.hold()
+            new_state = self.grasp()
+            # self.debug(self.debug_drone, f'state action is HOLD (debug 2/28)') 
+            # new_state = self.hold()
         elif self.state == State.DEPOSITING:
-            # new_state = self.deposit()
-            self.debug(self.debug_drone, f'state action is HOLD (debug 2/28)') 
-            new_state = self.hold()
+            new_state = self.deposit()
+            # self.debug(self.debug_drone, f'state action is HOLD (debug 2/28)') 
+            # new_state = self.hold()
         
         if self.checkForErrors():
             self.debug(True, "ERRORS FOUND - MOVING TO HOLD STATE")
