@@ -42,10 +42,10 @@ class TaskManagerNode(Node):
             "fast_max_ang_vel_deg_s": 90.0,
             "fast_max_lin_accel_m_s2": 1.0,
             "fast_max_z_vel_m_s": 2.0,
-            "precision_max_lin_vel_m_s": 1.0,
+            "precision_max_lin_vel_m_s": 0.3,
             "precision_max_ang_vel_deg_s": 30.0,
-            "precision_max_lin_accel_m_s2": 0.4,
-            "precision_max_z_vel_m_s": 0.5,
+            "precision_max_lin_accel_m_s2": 0.3,
+            "precision_max_z_vel_m_s": 0.2,
         }
 
         ### TOPIC DECLARATION - ALL PARAMETERIZED THROUGH ROS2 LAUNCH
@@ -168,8 +168,8 @@ class TaskManagerNode(Node):
 
         self.drone_publisher = self.create_publisher(DroneWaypoint, 
                                                     self.get_parameter('drone_pose_topic').value, 10)
-        self.centroid_publisher = self.create_publisher(Pose2D, 
-                                                    self.get_parameter('centroid_topic').value, 10)
+        # self.centroid_publisher = self.create_publisher(Pose2D, # this publisher is redundant and not used
+        #                                             self.get_parameter('centroid_topic').value, 10)
         self.grasp_publisher = self.create_publisher(PoseStamped, 
                                                     self.get_parameter('arm_grasp_topic').value, 10)
         self.traj_grasp_publisher = self.create_publisher(PoseStamped, 
@@ -736,7 +736,7 @@ class TaskManagerNode(Node):
             if self.isInRangeNED(NED_pos, 0.5, 0.2):  #TODO: ROS-tunable params
                 self.debug(self.debug_vbm, f'within range of object, begin GRASPING') 
 
-                return self.set_wait(State.GRASPING, 3) # Move to grasp after 3 seconds
+                return self.set_wait(State.HOLD, 3) # Move to grasp after 3 seconds
 
         # stay in navigation state
         self.debug(self.debug_drone, f'out of range, continue NAVIGATING') 
@@ -770,7 +770,7 @@ class TaskManagerNode(Node):
             if self.telemetry.altitude_above_ground < 0.35:
                 # check that we are not too low
                 self.debug(self.debug_drone, "Ground Too Close, Abort")
-                return False          
+                return True          
             
             if self.telemetry.altitude_above_ground < 0.6:
                 # check that we are not too low

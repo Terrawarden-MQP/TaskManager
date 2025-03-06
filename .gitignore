@@ -9,3 +9,5 @@ log/*/*/*
 build/*
 build/*/*
 build/*/*/*
+
+.vscode/*
