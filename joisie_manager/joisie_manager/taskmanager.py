@@ -548,7 +548,7 @@ class TaskManagerNode(Node):
     def FLU2NED_quaternion(self, FLUoffsetPoint: Point, timestamp: Time = None) -> Point:
         """
         Convert a local FLU offset in meters to global NED coordinates
-        Accepts a ROS2 timestamp and if specified grabs the quaternion at that point in time
+        Accepts a ROS2 timestamp, if specified grabs the quaternion at that point in time to counteract the camera processing delay
         Apply the current drone NED rotation quaternion to figure out the new point XYZ in the NED frame
         """
 
