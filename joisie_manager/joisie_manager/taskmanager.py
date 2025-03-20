@@ -22,12 +22,12 @@ import time
 
 class State(Enum):
     STARTUP = "STARTUP"
+    WAITING = "WAIT"
     HOLD = "HOLD"
     SEARCHING = "SEARCH"
     NAVIGATING = "NAV"
     GRASPING = "GRASP"
     DEPOSITING = "DEPOSIT"
-    WAITING = "WAIT"
     
 # launch using the ros2 launch joisie_manager all_nodes
 # ros2 topic pub -1 /joisie_set_state std_msgs/msg/String "{data: 'SEARCH'}"
@@ -43,6 +43,10 @@ class TaskManagerNode(Node):
             "fast_max_ang_vel_deg_s": 45.0,
             "fast_max_lin_accel_m_s2": 0.5,
             "fast_max_z_vel_m_s": 1.2,
+            "slow_max_lin_vel_m_s": 0.5,
+            "slow_max_ang_vel_deg_s": 30.0,
+            "slow_max_lin_accel_m_s2": 0.25,
+            "slow_max_z_vel_m_s": 0.5,
             "precision_max_lin_vel_m_s": 0.1,
             "precision_max_ang_vel_deg_s": 20.0,
             "precision_max_lin_accel_m_s2": 0.1,
@@ -133,8 +137,12 @@ class TaskManagerNode(Node):
         self.hold_Heading = 0.0
 
         # search state tracking
+        # TOOD: add zig-zag GPS pattern
+            # for now it could use the hold state pos tracking, but I will keep it like this for the future
         self.search_start_time = None
         self.search_start_heading = None
+        self.entry_point = None
+        self.border_points = []
 
         # waiting state variables
         self.next_state = State.HOLD
@@ -193,6 +201,7 @@ class TaskManagerNode(Node):
             # self.arm_status_subscriber.topic: False,
         }  
 
+        # initializes the drone state switching loop timer at the bottom of the file
         self.init_loop()
 
 
@@ -382,6 +391,7 @@ class TaskManagerNode(Node):
         '''
         next_state is the desired state after wait time
         wait_time_s is time IN SECONDS
+        does not command the drone in any way, shape, or form
         '''
         
         self.wait_time = wait_time_s
@@ -393,6 +403,7 @@ class TaskManagerNode(Node):
         '''
         this loops when wait is current state
         no inputs, outputs State
+        does not command the drone in any way, shape, or form
         '''
         if time.time() > self._wait_start_time + self.wait_time:
             return self.next_state
@@ -415,6 +426,14 @@ class TaskManagerNode(Node):
         return State.STARTUP
 
 # ----- HOLD
+            
+    def saveDroneHoldPose(self):
+        self.hold_NED_Point = self.telemetry.pos.pose.position
+        self.hold_Heading = self.telemetry.heading_degrees
+        
+    def retrieveDroneHoldPose(self):
+        return self.hold_NED_Point, self.hold_Heading
+
 
     def hold(self) -> State:  
         '''
@@ -520,16 +539,16 @@ class TaskManagerNode(Node):
         # convert to NED coordinates
         offset_ned = Point(x=rotated_flu_x, y=rotated_flu_y, z=-rotated_flu_z)
         
-        last_setpoint = self.get_last_sent_message(self.drone_publisher).ned_pos
+        known_position = self.telemetry.pos.pose.position
 
-        return Point(x=last_setpoint.x + offset_ned.x, 
-                    y=last_setpoint.y + offset_ned.y, 
-                    z=last_setpoint.z + offset_ned.z)
+        return Point(x=known_position.x + offset_ned.x, 
+                    y=known_position.y + offset_ned.y, 
+                    z=known_position.z + offset_ned.z)
         
     def FLU2NED_quaternion(self, FLUoffsetPoint: Point, timestamp: Time = None) -> Point:
         """
         Convert a local FLU offset in meters to global NED coordinates
-        Accepts a ROS2 timestamp in nanoseconds since epoch??? and if specified grabs the quaternion at that point in time
+        Accepts a ROS2 timestamp and if specified grabs the quaternion at that point in time
         Apply the current drone NED rotation quaternion to figure out the new point XYZ in the NED frame
         """
 
@@ -550,12 +569,15 @@ class TaskManagerNode(Node):
         
         # Get the current orientation quaternion
         # Quaternion rotation from FRD body frame to reference frame
+        # use the last position from telemetry and updage it with what the camera sees
         if timestamp is None:
             quat = self.telemetry.pos.pose.orientation
+            last_known_position = self.telemetry.pos.pose.position
         else:
             # get the closest telemetry message to the timestamp
             telemetry = self.get_telemetry_closest_to_time(timestamp)
             quat = telemetry.pos.pose.orientation
+            last_known_position = telemetry.pos.pose.position
             
         quat_np = np.array([quat.w, quat.x,  quat.y, quat.z])
         quat_np_conjugate = np.array([quat.w, -quat.x, -quat.y, -quat.z])
@@ -566,12 +588,9 @@ class TaskManagerNode(Node):
         # extract the rotated point
         NED_offset_point = Point(x=rotated_point[1], y=rotated_point[2], z=rotated_point[3])
         
-        #TODO: may need to use the last_NED_pos from drone telemetry vs the last one that was sent out
-        last_setpoint = self.get_last_sent_message(self.drone_publisher).ned_pos
-
-        return Point(x=last_setpoint.x + NED_offset_point.x, 
-                    y=last_setpoint.y + NED_offset_point.y, 
-                    z=last_setpoint.z + NED_offset_point.z)
+        return Point(x=last_known_position.x + NED_offset_point.x, 
+                    y=last_known_position.y + NED_offset_point.y, 
+                    z=last_known_position.z + NED_offset_point.z)
          
 
     def droneHover(self) -> None:   
@@ -579,8 +598,7 @@ class TaskManagerNode(Node):
         Sends last waypoint to drone as new waypoint, essentially tells it to stay where it is.    
         """
         
-        last_setpoint = self.hold_NED_Point
-        last_heading = self.hold_Heading
+        last_setpoint, last_heading = self.retrieveDroneHoldPose()
 
         # sends message
         self.sendWaypointNED(last_setpoint, last_heading)
@@ -684,14 +702,14 @@ class TaskManagerNode(Node):
         Move drone to next position in search pattern
         No inputs, no outputs
         """
-        # TODO - make this a real search pattern
+        # TODO - make this a zig-zags GPS assisted search patters for outside
                 
         # just slowly spin for now, slowly
         rpm = 2.0    
         degrees_per_second = rpm * 360.0 / 60.0
         
         self.debug(self.debug_drone, f'spinning, RPM: {rpm}') 
-
+            
         # init
         if self.search_start_time is None:
             self.search_start_time = self.get_clock().now()
@@ -704,14 +722,11 @@ class TaskManagerNode(Node):
         desired_heading = (self.search_start_heading + elapsed * degrees_per_second) % 360.0
 
         # send waypoint maintaining position but rotating
-        if self.get_last_sent_message(self.drone_publisher) is not None:
-            self.sendWaypointNED(
-                self.get_last_sent_message(self.drone_publisher).ned_pos,   
-                heading=desired_heading,
-                max_ang_vel_deg_s=degrees_per_second * 1.2  # 20% for smoothness
-            )
-        # else:
-        #     self.debug(self.debug_drone, f"Drone publisher history None; {self.last_sent_messages}")
+        self.sendWaypointNED(
+            self.retrieveDroneHoldPose()[0],  # NED position
+            heading=desired_heading,
+            max_ang_vel_deg_s=degrees_per_second * 1.2  # 20% for smoothness
+        )
 
         # detection found, transition states
         if self.is_new_data_from_subscriber(self.extract_subscriber):
@@ -722,7 +737,7 @@ class TaskManagerNode(Node):
 
             self.debug(self.debug_drone, f'found object at ({self.extract_pt.point}), changing to HOLD') 
 
-            return State.NAVIGATING
+            return self.set_wait(State.NAVIGATING, 5) # Move to grasp after 5 seconds 
         
         self.debug(self.debug_drone, f'nothing found, continue SEARCHING') 
 
@@ -745,7 +760,7 @@ class TaskManagerNode(Node):
 
             # convert that 3D point to NED, offset it above and towards the drone a bit
             
-            FLU_pos = self.offsetPointFLU(self.extract_pt.point, Point(x=-0.5, y=0., z=0.5))
+            FLU_pos = self.offsetPointFLU(self.extract_pt.point, Point(x=-0.707, y=0., z=0.707))
             NED_pos = self.FLU2NED_quaternion(FLU_pos, self.extract_pt.header.stamp) 
                     
             # calculate heading needed to turn towards point
@@ -759,8 +774,8 @@ class TaskManagerNode(Node):
             # if the new waypoint is within a certain distance of the robot, switch to grasping state
             if self.isInRangeNED(NED_pos, 0.6, 0.4):  #TODO: ROS-tunable params
                 self.debug(self.debug_vbm, f'within range of object, begin GRASPING') 
-                return State.GRASPING
-                # return self.set_wait(State.HOLD, 3) # Move to grasp after 3 seconds TODO TODO TODO cannot exit WAIT
+                # return State.GRASPING
+                return self.set_wait(State.HOLD, 5) # Move to grasp after 5 seconds
 
         # stay in navigation state
         self.debug(self.debug_drone, f'out of range, continue NAVIGATING') 
@@ -829,13 +844,9 @@ class TaskManagerNode(Node):
         elif self.state == State.NAVIGATING:
             new_state = self.navigate()
         elif self.state == State.GRASPING:
-            new_state = self.grasp()
-            # self.debug(self.debug_drone, f'state action is HOLD (debug 2/28)') 
-            # new_state = self.hold()
+            new_state = self.grasp()    
         elif self.state == State.DEPOSITING:
             new_state = self.deposit()
-            # self.debug(self.debug_drone, f'state action is HOLD (debug 2/28)') 
-            # new_state = self.hold()
         elif self.state == State.WAITING:
             new_state = self.wait()
             
@@ -847,12 +858,11 @@ class TaskManagerNode(Node):
             # just entering the HOLD for the first time
         if new_state == State.HOLD and self.state != State.HOLD:
             # save the POSE from telemetry to hold at
-            self.hold_NED_Point = self.telemetry.pos.pose.position
-            self.hold_Heading = self.telemetry.heading_degrees
+            self.saveDroneHoldPose()
             
         elif new_state == State.SEARCHING and self.state != State.SEARCHING:
            # save the current position so we can spin around it
-           pass
+           self.saveDroneHoldPose()
 
         # Directly set _state to avoid setter loop
         if not self.is_new_data_from_subscriber(self.state_setter_subscriber):
