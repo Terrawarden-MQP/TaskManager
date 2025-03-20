@@ -21,6 +21,7 @@ from enum import Enum, auto
 import time
 
 class State(Enum):
+    STARTUP = "STARTUP"
     HOLD = "HOLD"
     SEARCHING = "SEARCH"
     NAVIGATING = "NAV"
@@ -29,7 +30,7 @@ class State(Enum):
     WAITING = "WAIT"
     
 # launch using the ros2 launch joisie_manager all_nodes
-# ros2 topic pub -1 /joisie_manager/joisie_set_state std_msgs/msg/String "{data: 'SEARCH'}"
+# ros2 topic pub -1 /joisie_set_state std_msgs/msg/String "{data: 'SEARCH'}"
 
 class TaskManagerNode(Node):
 
@@ -38,14 +39,14 @@ class TaskManagerNode(Node):
         
         # drone flight parameters dictionary
         self.drone_params = {
-            "fast_max_lin_vel_m_s": 8.0,
-            "fast_max_ang_vel_deg_s": 90.0,
-            "fast_max_lin_accel_m_s2": 1.0,
-            "fast_max_z_vel_m_s": 2.0,
-            "precision_max_lin_vel_m_s": 0.3,
-            "precision_max_ang_vel_deg_s": 30.0,
-            "precision_max_lin_accel_m_s2": 0.3,
-            "precision_max_z_vel_m_s": 0.2,
+            "fast_max_lin_vel_m_s": 3.0,
+            "fast_max_ang_vel_deg_s": 45.0,
+            "fast_max_lin_accel_m_s2": 0.5,
+            "fast_max_z_vel_m_s": 1.2,
+            "precision_max_lin_vel_m_s": 0.1,
+            "precision_max_ang_vel_deg_s": 20.0,
+            "precision_max_lin_accel_m_s2": 0.1,
+            "precision_max_z_vel_m_s": 0.1,
         }
 
         ### TOPIC DECLARATION - ALL PARAMETERIZED THROUGH ROS2 LAUNCH
@@ -115,7 +116,7 @@ class TaskManagerNode(Node):
         self.get_logger().info(f"Debug Flags: Publish: {self.debug_publish}, Drone {self.debug_drone},"+
                                f" Detection {self.debug_detect}, VBM {self.debug_vbm}, Arm {self.debug_arm}")
         # INITIAL STATE
-        self._state = State.HOLD
+        self._state = State.STARTUP
         self._telemetry = DroneTelemetry()
         self.telemetry_queue = deque()
         self._detection = Detection2D()
@@ -126,6 +127,10 @@ class TaskManagerNode(Node):
         # STORE PREVIOUS MESSAGE SENT PER TOPIC
         self.last_sent_messages = {}
         self.msg_timeout = 3
+        
+        # hold state variables
+        self.hold_NED_Point = Point()
+        self.hold_Heading = 0.0
 
         # search state tracking
         self.search_start_time = None
@@ -392,6 +397,22 @@ class TaskManagerNode(Node):
         if time.time() > self._wait_start_time + self.wait_time:
             return self.next_state
         return State.WAITING
+    
+# ----- STARTUP
+
+    def startup(self) -> State:
+        '''
+        this loops when startup is current state
+        checks drone telemetry and switches to HOLD if drone is offboard and armed
+        '''
+        
+        # check if drone is flying and offboard
+        if self.is_new_data_from_subscriber(self.telemetry_subscriber):
+            if self.telemetry.is_flying == True and self.telemetry.is_offboard == True:
+                self.debug(self.debug_drone, "Drone is offboard and armed, switching to HOLD")
+                return State.HOLD        
+        
+        return State.STARTUP
 
 # ----- HOLD
 
@@ -417,10 +438,16 @@ class TaskManagerNode(Node):
         self.droneHover()
         
         # calculate grasp
-        # generate posestamped message from grastp
+        # generate posestamped message from grasp
         if self.is_new_data_from_subscriber(self.grasp_subscriber):
-            self.raw_grasp
+            # self.raw_grasp
             self.sendArmToPoint(self.raw_grasp)
+        
+        elif self.is_new_data_from_subscriber(self.extract_subscriber):
+            pt = PoseStamped()
+            pt.header = self.extract_pt.header
+            pt.pose.position = self.extract_pt.point
+            self.sendArmToPoint(pt)
         
         return State.GRASPING # TODO - what state makes sense to move into?
     
@@ -551,16 +578,13 @@ class TaskManagerNode(Node):
         """
         Sends last waypoint to drone as new waypoint, essentially tells it to stay where it is.    
         """
-        # finds last waypoint / current position
-        if (self.get_last_sent_message(self.drone_publisher) is None):
-            telemetry_point = self.telemetry.pos.pose.position
-            last_setpoint = Point(x=telemetry_point.x, y=telemetry_point.y, z=telemetry_point.z)
-        else:
-            last_setpoint = self.get_last_sent_message(self.drone_publisher).ned_pos
+        
+        last_setpoint = self.hold_NED_Point
+        last_heading = self.hold_Heading
 
         # sends message
-        self.sendWaypointNED(Point(x=last_setpoint.x, y=last_setpoint.y, z=last_setpoint.z))
-        self.debug(self.debug_drone, f'drone hovering @ {last_setpoint}')
+        self.sendWaypointNED(last_setpoint, last_heading)
+        self.debug(self.debug_drone, f'drone hovering @ {last_setpoint} heading {last_heading}')
         
 
     def isInRangeNED(self, NEDpoint: Point, toleranceXY: float, toleranceZ: float) -> bool:
@@ -690,13 +714,13 @@ class TaskManagerNode(Node):
         #     self.debug(self.debug_drone, f"Drone publisher history None; {self.last_sent_messages}")
 
         # detection found, transition states
-        if self.is_new_data_from_subscriber(self.detection_subscriber):
+        if self.is_new_data_from_subscriber(self.extract_subscriber):
             
             # reset search timer, heading
             self.search_start_time = None   
             self.search_start_heading = None
 
-            self.debug(self.debug_drone, f'found object, changing to NAVIGATING') 
+            self.debug(self.debug_drone, f'found object at ({self.extract_pt.point}), changing to HOLD') 
 
             return State.NAVIGATING
         
@@ -733,10 +757,10 @@ class TaskManagerNode(Node):
             self.sendWaypointNED(NED_pos, heading_deg, self.drone_params["precision_max_ang_vel_deg_s"], self.drone_params["precision_max_lin_vel_m_s"], self.drone_params["precision_max_z_vel_m_s"], self.drone_params["precision_max_lin_accel_m_s2"])    
 
             # if the new waypoint is within a certain distance of the robot, switch to grasping state
-            if self.isInRangeNED(NED_pos, 0.5, 0.2):  #TODO: ROS-tunable params
+            if self.isInRangeNED(NED_pos, 0.6, 0.4):  #TODO: ROS-tunable params
                 self.debug(self.debug_vbm, f'within range of object, begin GRASPING') 
-
-                return self.set_wait(State.HOLD, 3) # Move to grasp after 3 seconds
+                return State.GRASPING
+                # return self.set_wait(State.HOLD, 3) # Move to grasp after 3 seconds TODO TODO TODO cannot exit WAIT
 
         # stay in navigation state
         self.debug(self.debug_drone, f'out of range, continue NAVIGATING') 
@@ -767,12 +791,12 @@ class TaskManagerNode(Node):
         if self.is_new_data_from_subscriber(self.telemetry_subscriber):
             
             # check that we have more than 0.35m of ground clearance beneath the drone
-            if self.telemetry.altitude_above_ground < 0.35:
+            if self.telemetry.altitude_above_ground < 0.4:
                 # check that we are not too low
                 self.debug(self.debug_drone, "Ground Too Close, Abort")
                 return True          
             
-            if self.telemetry.altitude_above_ground < 0.6:
+            if self.telemetry.altitude_above_ground < 1.0:
                 # check that we are not too low
                 self.debug(self.debug_drone, "Ground Proximity Warning")
                 return False
@@ -796,7 +820,9 @@ class TaskManagerNode(Node):
 
         new_state = self.state
         
-        if self.state == State.HOLD:
+        if self.state == State.STARTUP:
+            new_state = self.startup()        
+        elif self.state == State.HOLD:
             new_state = self.hold()
         elif self.state == State.SEARCHING:
             new_state = self.search()
@@ -815,7 +841,18 @@ class TaskManagerNode(Node):
             
         if self.checkForErrors():
             self.debug(True, "ERRORS FOUND - MOVING TO HOLD STATE")
-            new_state = State.HOLD
+            # new_state = State.HOLD TODO TODO TODO TODO 
+            
+    #---- state transition switch here
+            # just entering the HOLD for the first time
+        if new_state == State.HOLD and self.state != State.HOLD:
+            # save the POSE from telemetry to hold at
+            self.hold_NED_Point = self.telemetry.pos.pose.position
+            self.hold_Heading = self.telemetry.heading_degrees
+            
+        elif new_state == State.SEARCHING and self.state != State.SEARCHING:
+           # save the current position so we can spin around it
+           pass
 
         # Directly set _state to avoid setter loop
         if not self.is_new_data_from_subscriber(self.state_setter_subscriber):

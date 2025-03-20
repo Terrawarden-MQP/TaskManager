@@ -26,6 +26,8 @@ def generate_launch_description():
         DeclareLaunchArgument("arm_grasp_topic", default_value="joisie_grasp_send", description="Topic for sending grasp to arm"),
         DeclareLaunchArgument("arm_status_topic", default_value="joisie_arm_status", description="CustomArmMsg from Arm Node"),
         DeclareLaunchArgument("arm_service_topic", default_value="joisie_arm_inrange_service", description="Topic for InRangeOfObj Service Call to Arm Node"),
+        DeclareLaunchArgument("arm_grasp_topic", default_value="arm_grasp_topic", description="send arm to point (no trajectory)"),
+        DeclareLaunchArgument("traj_arm_grasp_topic", default_value="joisie_arm_trajectory_target", description="send arm to point with trajectory"),
         DeclareLaunchArgument("state_setter_topic", default_value="joisie_set_state", description="Topic for setting states"),
         DeclareLaunchArgument("state_topic",default_value="joisie_state",description="Topic to publish task manager state information"),
         DeclareLaunchArgument("manager_debug",default_value="0b11111",description="Flags for selecting which sections of code to debug"),
@@ -116,6 +118,7 @@ def generate_launch_description():
                 "arm_grasp_topic": LaunchConfiguration("arm_grasp_topic"),
                 "arm_status_topic": LaunchConfiguration("arm_status_topic"),
                 "arm_service_topic": LaunchConfiguration("arm_service_topic"),
+                "traj_arm_grasp_topic": LaunchConfiguration("traj_arm_grasp_topic"),
                 "state_setter_topic": LaunchConfiguration("state_setter_topic"),
                 "state_topic": LaunchConfiguration("state_topic"),
                 "debug": LaunchConfiguration("manager_debug"),
@@ -168,6 +171,11 @@ def generate_launch_description():
                 'pos_topic': LaunchConfiguration('pos_topic'),
             }],
             arguments=['--ros-args', '--log-level', LaunchConfiguration('log_level')]
+        ),
+        Node(
+            package="terrawarden_mansplain",
+            executable="arm_node",
+            name="arm_node",
         ),
         Node(
             package="tf2_ros",
