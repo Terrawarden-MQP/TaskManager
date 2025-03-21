@@ -155,23 +155,23 @@ def generate_launch_description():
             }],
             arguments=['--ros-args', '--log-level', LaunchConfiguration('log_level')]
         ),
-        Node(
-            package='grasp_vision_cpp',
-            executable='optimal_grasp',
-            name='optimal_grasp',
-            parameters=[{
-                'cluster_topic': LaunchConfiguration('cluster_topic'),
-                'normal_search_radius': LaunchConfiguration('normal_search_radius'),
-                'min_search_threshold': LaunchConfiguration('min_search_threshold'),
-                'max_search_threshold': LaunchConfiguration('max_search_threshold'),
-                'visualize': LaunchConfiguration('visualize'),
-                'select_stability_metric': LaunchConfiguration('select_stability_metric'),
-                'variance_neighbors': LaunchConfiguration('variance_neighbors'),
-                'variance_threshold': LaunchConfiguration('variance_threshold'),
-                'pos_topic': LaunchConfiguration('pos_topic'),
-            }],
-            arguments=['--ros-args', '--log-level', LaunchConfiguration('log_level')]
-        ),
+        # Node(
+        #     package='grasp_vision_cpp',
+        #     executable='optimal_grasp',
+        #     name='optimal_grasp',
+        #     parameters=[{
+        #         'cluster_topic': LaunchConfiguration('cluster_topic'),
+        #         'normal_search_radius': LaunchConfiguration('normal_search_radius'),
+        #         'min_search_threshold': LaunchConfiguration('min_search_threshold'),
+        #         'max_search_threshold': LaunchConfiguration('max_search_threshold'),
+        #         'visualize': LaunchConfiguration('visualize'),
+        #         'select_stability_metric': LaunchConfiguration('select_stability_metric'),
+        #         'variance_neighbors': LaunchConfiguration('variance_neighbors'),
+        #         'variance_threshold': LaunchConfiguration('variance_threshold'),
+        #         'pos_topic': LaunchConfiguration('pos_topic'),
+        #     }],
+        #     arguments=['--ros-args', '--log-level', LaunchConfiguration('log_level')]
+        # ),
         Node(
             package="terrawarden_mansplain",
             executable="arm_node",
@@ -181,7 +181,7 @@ def generate_launch_description():
             package="tf2_ros",
             executable="static_transform_publisher",
             name="static_tf_pub",
-            # Pitch rotation 30 deg + translation
-            arguments = ['--x', '0.1', '--y', '0', '--z', '-0.16', '--yaw', '0', '--pitch', '0.523599', '--roll', '0', '--frame-id', 'drone_frame', '--child-frame-id', 'camera_link']
+            # Pitch rotation 40 deg + translation
+            arguments = ['--x', '0.09', '--y', '0', '--z', '-0.16', '--yaw', '0', '--pitch', '0.698132', '--roll', '0', '--frame-id', 'drone_frame', '--child-frame-id', 'camera_link']
         )
     ])

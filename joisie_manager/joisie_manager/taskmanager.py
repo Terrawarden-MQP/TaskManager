@@ -458,15 +458,17 @@ class TaskManagerNode(Node):
         
         # calculate grasp
         # generate posestamped message from grasp
-        if self.is_new_data_from_subscriber(self.grasp_subscriber):
-            # self.raw_grasp
-            self.sendArmToPoint(self.raw_grasp)
+        # TODO if refresh rate gets to live rate, use this instead
+        # if self.is_new_data_from_subscriber(self.grasp_subscriber):
+        #     # self.raw_grasp
+        #     self.sendArmToPoint(self.raw_grasp)
         
-        elif self.is_new_data_from_subscriber(self.extract_subscriber):
+        if self.is_new_data_from_subscriber(self.extract_subscriber):
             pt = PoseStamped()
             pt.header = self.extract_pt.header
             pt.pose.position = self.extract_pt.point
             self.sendArmToPoint(pt)
+            self.set_wait(State.GRASPING,0.05) # TODO
         
         return State.GRASPING # TODO - what state makes sense to move into?
     
@@ -737,7 +739,7 @@ class TaskManagerNode(Node):
 
             self.debug(self.debug_drone, f'found object at ({self.extract_pt.point}), changing to HOLD') 
 
-            return self.set_wait(State.NAVIGATING, 5) # Move to grasp after 5 seconds 
+            return self.set_wait(State.NAVIGATING, 1) # Move to grasp after 5 seconds 
         
         self.debug(self.debug_drone, f'nothing found, continue SEARCHING') 
 
@@ -775,7 +777,7 @@ class TaskManagerNode(Node):
             if self.isInRangeNED(NED_pos, 0.6, 0.4):  #TODO: ROS-tunable params
                 self.debug(self.debug_vbm, f'within range of object, begin GRASPING') 
                 # return State.GRASPING
-                return self.set_wait(State.HOLD, 5) # Move to grasp after 5 seconds
+                return self.set_wait(State.GRASPING, 1) # Move to grasp after 5 seconds
 
         # stay in navigation state
         self.debug(self.debug_drone, f'out of range, continue NAVIGATING') 
