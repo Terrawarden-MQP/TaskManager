@@ -108,9 +108,10 @@ class TaskManagerNode(Node):
         # self.in_range_service = self.create_client(Bool, self.get_parameter('arm_grasp_topic').value) # TODO fix or delete
 
         # -----
-
-
+        # DEBUG
+        self.declare_parameter('override_errors',False)
         self.declare_parameter('debug', 0b11111)
+        self.override_errors = self.get_parameter('override_errors').value
         debug = self.get_parameter('debug').value
         self.debug_publish  = bool(debug & 0b10000)
         self.debug_drone    = bool(debug & 0b01000)
@@ -390,11 +391,11 @@ class TaskManagerNode(Node):
     def set_wait(self, next_state: State, wait_time_s: float) -> State:
         '''
         next_state is the desired state after wait time
-        wait_time_s is time IN SECONDS
+        wait_time_s is time IN SECONDS, overriden to 0.5 if override_errors is True
         does not command the drone in any way, shape, or form
         '''
         
-        self.wait_time = wait_time_s
+        self.wait_time = wait_time_s if not self.override_errors else 0.5
         self.next_state = next_state
         
         return State.WAITING
@@ -468,7 +469,6 @@ class TaskManagerNode(Node):
             pt.header = self.extract_pt.header
             pt.pose.position = self.extract_pt.point
             self.sendArmToPoint(pt)
-            self.set_wait(State.GRASPING,0.05) # TODO
         
         return State.GRASPING # TODO - what state makes sense to move into?
     
@@ -739,7 +739,7 @@ class TaskManagerNode(Node):
 
             self.debug(self.debug_drone, f'found object at ({self.extract_pt.point}), changing to HOLD') 
 
-            return self.set_wait(State.NAVIGATING, 1) # Move to grasp after 5 seconds 
+            return self.set_wait(State.NAVIGATING, 3) # Move to grasp after 5 seconds 
         
         self.debug(self.debug_drone, f'nothing found, continue SEARCHING') 
 
@@ -777,7 +777,7 @@ class TaskManagerNode(Node):
             if self.isInRangeNED(NED_pos, 0.6, 0.4):  #TODO: ROS-tunable params
                 self.debug(self.debug_vbm, f'within range of object, begin GRASPING') 
                 # return State.GRASPING
-                return self.set_wait(State.GRASPING, 1) # Move to grasp after 5 seconds
+                return self.set_wait(State.GRASPING, 3) # Move to grasp after 5 seconds
 
         # stay in navigation state
         self.debug(self.debug_drone, f'out of range, continue NAVIGATING') 
@@ -852,9 +852,9 @@ class TaskManagerNode(Node):
         elif self.state == State.WAITING:
             new_state = self.wait()
             
-        if self.checkForErrors():
+        if self.checkForErrors() and not self.override_errors:
             self.debug(True, "ERRORS FOUND - MOVING TO HOLD STATE")
-            # new_state = State.HOLD TODO TODO TODO TODO 
+            new_state = State.HOLD
             
     #---- state transition switch here
             # just entering the HOLD for the first time

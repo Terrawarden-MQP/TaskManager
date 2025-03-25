@@ -31,6 +31,7 @@ def generate_launch_description():
         DeclareLaunchArgument("state_setter_topic", default_value="joisie_set_state", description="Topic for setting states"),
         DeclareLaunchArgument("state_topic",default_value="joisie_state",description="Topic to publish task manager state information"),
         DeclareLaunchArgument("manager_debug",default_value="0b11111",description="Flags for selecting which sections of code to debug"),
+        DeclareLaunchArgument("override_errors",default_value="false",description="Flag for overriding error checking (useful for ground testing). If true, changes all wait times to 0.5"),
         
         # VBM arguments
         DeclareLaunchArgument('log_level', default_value='INFO', description='Log verbosity level'),
@@ -123,6 +124,7 @@ def generate_launch_description():
                 "state_setter_topic": LaunchConfiguration("state_setter_topic"),
                 "state_topic": LaunchConfiguration("state_topic"),
                 "debug": LaunchConfiguration("manager_debug"),
+                "override_errors": LaunchConfiguration("override_errors"),
             }]
         ),
         Node(
@@ -184,6 +186,7 @@ def generate_launch_description():
             executable="static_transform_publisher",
             name="static_tf_pub",
             # Pitch rotation 40 deg + translation
-            arguments = ['--x', '0.09', '--y', '0', '--z', '-0.16', '--yaw', '0', '--pitch', '0.698132', '--roll', '0', '--frame-id', 'drone_frame', '--child-frame-id', 'camera_link']
+            arguments = ['--x', '0.12', '--y', '0.06', '--z', '-0.04', '--yaw', '0', '--pitch', '0.698132', '--roll', '0', '--frame-id', 'drone_frame', '--child-frame-id', 'camera_link']
+            # ros2 run tf2_ros static_transform_publisher 0.12 0.06 -0.04 0 0.698 0 drone_frame camera_link
         )
     ])
