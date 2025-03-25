@@ -6,11 +6,12 @@ from rclpy.node import Node
 from sensor_msgs.msg import Image
 from std_msgs.msg import String, Bool, Header
 from vision_msgs.msg import Detection2D
-from terrawarden_interfaces.msg import DroneTelemetry, DroneWaypoint
+from terrawarden_interfaces.msg import DroneTelemetry, DroneWaypoint, ArmStatus
 from geometry_msgs.msg import Pose2D, Point, PointStamped, PoseWithCovariance, PoseStamped
 from builtin_interfaces.msg import Time
 import tf2_ros
 from collections import deque
+from std_srvs.srv import Empty
 
 # import transformations
 import cv2
@@ -24,8 +25,10 @@ class State(Enum):
     STARTUP = "STARTUP"
     FAILSAFE = "FAILSAFE"
     LANDING = "LAND"
+
     WAITING = "WAIT"
     HOLD = "HOLD"
+
     SEARCHING = "SEARCH"
     NAVIGATING = "NAV"
     GRASPING = "GRASP"
@@ -54,6 +57,10 @@ class TaskManagerNode(Node):
             "precision_max_lin_accel_m_s2": 0.1,
             "precision_max_z_vel_m_s": 0.1,
         }
+
+        ### STOW ARM SERVICE CLIENT
+        self.stow_arm_client = self.create_client(Empty, 'stow_arm')
+        self.unstow_arm_client = self.create_client(Empty, 'unstow_arm')
 
         ### TOPIC DECLARATION - ALL PARAMETERIZED THROUGH ROS2 LAUNCH
 
@@ -150,7 +157,7 @@ class TaskManagerNode(Node):
         self.entry_point = None
         self.border_points = []
 
-        # waiting state variables
+        # waiting, stowing, unstowing state variables
         self.next_state = State.HOLD
         self._wait_time = 0
         self._wait_start_time = 0
@@ -178,9 +185,9 @@ class TaskManagerNode(Node):
                                                     self.get_parameter('vbm_grasp_topic').value, 
                                                     self.get_setter("raw_grasp"), 10)
 
-        # self.arm_status_subscriber = self.create_subscription(DynaArmStatus, 
-        #                                             self.get_parameter('arm_status_topic').value, 
-        #                                             self.arm_status, 10)
+        self.arm_status_subscriber = self.create_subscription(ArmStatus, 
+                                                    self.get_parameter('arm_status_topic').value, 
+                                                    self.get_setter("arm_status"), 10)
 
         # -----
     # PUBLISHERS
@@ -236,7 +243,7 @@ class TaskManagerNode(Node):
         self.received_new[self.state_setter_subscriber.topic] = True
         try:
             string = ros_msg.data
-            self.state = State(string)
+            self.new_state = State(string)
             self.debug(True, f"State changed due to incoming message: {string}")
         except:
             self.debug(True, f"[WARNING] No matching state for string: {string}")
@@ -308,15 +315,47 @@ class TaskManagerNode(Node):
         self._wait_start_time = time.time()
         self._wait_time = val
 
-    # @property
-    # def arm_status(self) -> DynaArmStatus:
-    #     self.received_new[self.arm_status_subscriber.topic] = False
-    #     return self._arm_status
+    @property
+    def arm_status(self) -> ArmStatus:
+        self.received_new[self.arm_status_subscriber.topic] = False
+        return self._arm_status
     
-    # @arm_status.setter
-    # def arm_status(self, ros_msg: DynaArmStatus):
-    #     self.received_new[self.arm_status_subscriber.topic] = True
-    #     self._arm_status = ros_msg
+    @arm_status.setter
+    def arm_status(self, ros_msg: ArmStatus):
+        self.received_new[self.arm_status_subscriber.topic] = True
+        self._arm_status = ros_msg
+
+# ----- STOW FNs
+    def stow_arm(self):
+        # Call the stow_arm service
+        self.get_logger().info('Calling stow_arm service...')
+        request = Empty.Request()
+        future = self.stow_arm_client.call_async(request)
+        # Internal function for service debug messages
+        def service_debug_message(response):
+            try:
+                response.result()
+                return "Stow Service Success"
+            except:
+                return "Stow Service Failure"
+
+        future.add_done_callback(lambda response: self.debug(self.debug_arm, service_debug_message(response)))
+    
+    def unstow_arm(self):
+        # Call the unstow_arm service
+        self.get_logger().info('Calling unstow_arm service...')
+        request = Empty.Request()
+        future = self.unstow_arm_client.call_async(request)
+        # Internal function for service debug messages
+        def service_debug_message(response):
+            try:
+                response.result()
+                return "Unstow Service Success"
+            except:
+                return "Unstow Service Failure"
+
+        future.add_done_callback(lambda response: self.debug(self.debug_arm, service_debug_message(response)))
+    
 
 # ----- HELPER FNs
 
@@ -390,84 +429,6 @@ class TaskManagerNode(Node):
         # ONLY INCLUDE THE MESSAGE CONTENT (queue stores [timestamp, message])
         return self.telemetry_queue[closest[1]][1]
             
-
-# ----- WAIT
-
-    def set_wait(self, next_state: State, wait_time_s: float) -> State:
-        '''
-        next_state is the desired state after wait time
-        wait_time_s is time IN SECONDS, overriden to 0.5 if override_errors is True
-        does not command the drone in any way, shape, or form
-        '''
-        
-        self.wait_time = wait_time_s if not self.override_errors else 0.5
-        self.next_state = next_state
-        
-        return State.WAITING
-
-    def wait(self) -> State:
-        '''
-        this loops when wait is current state
-        no inputs, outputs State
-        does not command the drone in any way, shape, or form
-        '''
-        if time.time() > self._wait_start_time + self.wait_time:
-            return self.next_state
-        return State.WAITING
-    
-# ----- STARTUP
-
-    def startup(self) -> State:
-        '''
-        this loops when startup is current state
-        checks drone telemetry and switches to HOLD if drone is offboard and armed
-        '''
-        
-        # check if drone is flying and offboard
-        if self.is_new_data_from_subscriber(self.telemetry_subscriber):
-            if self.telemetry.is_flying == True and self.telemetry.is_offboard == True:
-                self.debug(self.debug_drone, "Drone is offboard and armed, switching to HOLD")
-                return State.HOLD        
-        
-        return State.STARTUP
-    
-    
-# ----- FAILSAFE
-
-    def failsafe(self) -> State:
-        '''
-        upon entering this state keep slowly returning to home armed position and land
-        used only in case the RC link has been lost to prevent runaway of the system
-        '''
-
-        # when it is within a meter of the home position in XY only
-        if self.isInRangeNED(Point(x=0, y=0, z=-10), 1.0, 10000.0):
-            self.debug(self.debug_drone, "Drone failsafe is in range of home position, switching to LANDING")    
-            
-            # send the setpoint to go down the current above ground altitude (+ 2 extra meters for good measure)
-            # the PX4 autopilot should detect the landing, and disarm the drone automatically
-            current_NED_pos = self.telemetry.pos.pose.position
-            dist_in_Z_to_ground = current_NED_pos.z + self.telemetry.altitude_above_ground_m + 2
-            point_to_land = self.FLU2NED(Point(x=0, y=0, z=dist_in_Z_to_ground))
-            self.sendWaypointNED(point_to_land, 0)
-            return State.LANDING
-        
-        return State.FAILSAFE
-    
-# ----- LANDING
-
-    def land(self) -> State:
-        '''
-        land the drone by issuing a PX4 command to land
-        this is a failsafe state, so it will keep trying to land until it is on the ground
-        '''
-        
-        # self.sendWaypointNED(Point(x=0, y=0, z=0), 0, self.drone_params["precision_max_ang_vel_deg_s"], self.drone_params["precision_max_lin_vel_m_s"], self.drone_params["precision_max_z_vel_m_s"], self.drone_params["precision_max_lin_accel_m_s2"])                   
-        
-        return State.LANDING
-
-# ----- HOLD
-            
     def saveDroneHoldPose(self):
         self.hold_NED_Point = self.telemetry.pos.pose.position
         self.hold_Heading = self.telemetry.heading_degrees
@@ -476,41 +437,7 @@ class TaskManagerNode(Node):
         return self.hold_NED_Point, self.hold_Heading
 
 
-    def hold(self) -> State:  
-        '''
-        this loops when hold is current state
-        no inputs, outputs State
-        '''
 
-        self.droneHover()
-        # listening for desired state happens async from this'
-
-        return State.HOLD
-
-# ----- GRASP
-
-    def grasp(self) -> State:
-        '''
-        this loops when grasp is current state
-        no inputs, outputs State
-        '''
-
-        self.droneHover()
-        
-        # calculate grasp
-        # generate posestamped message from grasp
-        # TODO if refresh rate gets to live rate, use this instead
-        # if self.is_new_data_from_subscriber(self.grasp_subscriber):
-        #     # self.raw_grasp
-        #     self.sendArmToPoint(self.raw_grasp)
-        
-        if self.is_new_data_from_subscriber(self.extract_subscriber):
-            pt = PoseStamped()
-            pt.header = self.extract_pt.header
-            pt.pose.position = self.extract_pt.point
-            self.sendArmToPoint(pt)
-        
-        return State.GRASPING # TODO - what state makes sense to move into?
     
 # ----- DRONE HELPERS
 
@@ -736,6 +663,127 @@ class TaskManagerNode(Node):
         else:
             self.publish_helper(self.grasp_publisher, poseStampedMsg)
 
+    def set_wait(self, next_state: State, wait_time_s: float = 0.5, wait_until_fn: function = None) -> State:
+        '''
+        next_state is the desired state after wait time
+        wait_time_s is time IN SECONDS
+        wait_time_fn is a function()->bool. Overrides wait_time if not included in function
+        does not command the drone in any way, shape, or form
+        '''
+        # Default is time-based
+        def default_wait_fn():
+            return time.time() > self._wait_start_time + self.wait_time
+        if wait_until_fn is None:
+            wait_until_fn = default_wait_fn
+
+        self.wait_time = wait_time_s
+        self.next_state = next_state
+        self.wait_until_fn = wait_until_fn
+
+        return State.WAITING
+    
+# ----- STATE FUNCTIONS (not helpers!)
+
+    def wait(self) -> State:
+        '''
+        this loops when wait is current state
+        no inputs, outputs State
+        does not command the drone in any way, shape, or form
+        '''
+        if self.wait_until_fn():
+            return self.next_state
+        return State.WAITING
+    
+# ----- STARTUP
+
+    def startup(self) -> State:
+        '''
+        this loops when startup is current state
+        checks drone telemetry and switches to HOLD if drone is offboard and armed
+        '''
+        
+        # check if drone is flying and offboard
+        if self.is_new_data_from_subscriber(self.telemetry_subscriber):
+            if self.telemetry.is_flying == True and self.telemetry.is_offboard == True:
+                self.debug(self.debug_drone, "Drone is offboard and armed, switching to HOLD")
+                return State.HOLD        
+        
+        return State.STARTUP
+    
+# ----- FAILSAFE
+
+    def failsafe(self) -> State:
+        '''
+        upon entering this state keep slowly returning to home armed position and land
+        used only in case the RC link has been lost to prevent runaway of the system
+        '''
+
+        # when it is within a meter of the home position in XY only
+        if self.isInRangeNED(Point(x=0, y=0, z=-10), 1.0, 10000.0):
+            self.debug(self.debug_drone, "Drone failsafe is in range of home position, switching to LANDING")    
+            
+            # send the setpoint to go down the current above ground altitude (+ 2 extra meters for good measure)
+            # the PX4 autopilot should detect the landing, and disarm the drone automatically
+            current_NED_pos = self.telemetry.pos.pose.position
+            dist_in_Z_to_ground = current_NED_pos.z + self.telemetry.altitude_above_ground_m + 2
+            point_to_land = self.FLU2NED(Point(x=0, y=0, z=dist_in_Z_to_ground))
+            self.sendWaypointNED(point_to_land, 0)
+            return State.LANDING
+        
+        return State.FAILSAFE
+    
+# ----- LANDING
+
+    def land(self) -> State:
+        '''
+        land the drone by issuing a PX4 command to land
+        this is a failsafe state, so it will keep trying to land until it is on the ground
+        '''
+        
+        # self.sendWaypointNED(Point(x=0, y=0, z=0), 0, self.drone_params["precision_max_ang_vel_deg_s"], self.drone_params["precision_max_lin_vel_m_s"], self.drone_params["precision_max_z_vel_m_s"], self.drone_params["precision_max_lin_accel_m_s2"])                   
+        
+        return State.LANDING
+    
+    def hold(self) -> State:  
+        '''
+        this loops when hold is current state
+        no inputs, outputs State
+        '''
+
+        self.droneHover()
+        # listening for desired state happens async from this'
+
+        # TODO: this freaking weird thing, will throw the drone from the sky, because it will crash into into the ground the way it is here --JJ
+        if not self.arm_status.is_stowed:
+            self.stow_arm()
+
+        return State.HOLD
+
+# ----- GRASP
+
+    def grasp(self) -> State:
+        '''
+        this loops when grasp is current state
+        no inputs, outputs State
+        '''
+
+        self.droneHover()
+        
+        # calculate grasp
+        # generate posestamped message from grasp
+        # TODO if refresh rate gets to live rate, use this instead
+        # if self.is_new_data_from_subscriber(self.grasp_subscriber):
+        #     # self.raw_grasp
+        #     self.sendArmToPoint(self.raw_grasp)
+
+        
+        if self.is_new_data_from_subscriber(self.extract_subscriber):
+            pt = PoseStamped()
+            pt.header = self.extract_pt.header
+            pt.pose.position = self.extract_pt.point
+            self.sendArmToPoint(pt)
+        
+        return State.GRASPING # TODO - what state makes sense to move into?
 
 # ----- SEARCH
 
@@ -751,12 +799,6 @@ class TaskManagerNode(Node):
         degrees_per_second = rpm * 360.0 / 60.0
         
         self.debug(self.debug_drone, f'spinning, RPM: {rpm}') 
-            
-        # init
-        if self.search_start_time is None:
-            self.search_start_time = self.get_clock().now()
-            self.search_start_heading = self.telemetry.heading_degrees
-            self.debug(self.debug_drone, "Starting search pattern")
 
         # desired heading based on elapsed time
         current_time = self.get_clock().now()
@@ -772,14 +814,10 @@ class TaskManagerNode(Node):
 
         # detection found, transition states
         if self.is_new_data_from_subscriber(self.extract_subscriber):
-            
-            # reset search timer, heading
-            self.search_start_time = None   
-            self.search_start_heading = None
 
             self.debug(self.debug_drone, f'found object at ({self.extract_pt.point}), changing to HOLD') 
 
-            return self.set_wait(State.NAVIGATING, 3) # Move to grasp after 5 seconds 
+            return self.set_wait(State.NAVIGATING, 5) # Move to grasp after 5 seconds 
         
         self.debug(self.debug_drone, f'nothing found, continue SEARCHING') 
 
@@ -817,14 +855,20 @@ class TaskManagerNode(Node):
             if self.isInRangeNED(NED_pos, 0.6, 0.4):  #TODO: ROS-tunable params
                 self.debug(self.debug_vbm, f'within range of object, begin GRASPING') 
                 # return State.GRASPING
-                return self.set_wait(State.GRASPING, 3) # Move to grasp after 5 seconds
+
+                # if self.arm_status.is_stowed:
+                #     self.unstow_arm()
+
+                def check_arm_position_unstowed():
+                    return self.arm_status.at_setpoint and not self.arm_status.is_stowed
+
+                # return self.set_wait(State.GRASPING, check_arm_position_unstowed) # Move to grasp state when unstowed
+                return self.set_wait(State.GRASPING, 5) # Move to grasp after 5 seconds
 
         # stay in navigation state
         self.debug(self.debug_drone, f'out of range, continue NAVIGATING') 
 
         return State.NAVIGATING
-
-# -----
     
     def deposit(self) -> State:
         '''
@@ -834,6 +878,8 @@ class TaskManagerNode(Node):
         # drops the object
         #  pass this for now
         return State.DEPOSITING # TODO
+    
+# --- ERROR CHECKING AND FAILSAFES
 
     def checkForErrors(self) -> bool:
         '''
@@ -842,7 +888,8 @@ class TaskManagerNode(Node):
         
         returns True if there is error
         '''
-
+        if self.override_errors:
+            return False
         # Read most recent Telemetry and ArmStatus data
         # Set mode to State.HOLD if any errors
         if self.is_new_data_from_subscriber(self.telemetry_subscriber):
@@ -867,6 +914,9 @@ class TaskManagerNode(Node):
         
         the RC control can always switch off offboard mode and take over manually
         '''
+        # If we're ignoring errors, ignore failsafe as well
+        if self.override_errors:
+            return False
         
         if self.is_new_data_from_subscriber(self.telemetry_subscriber):
             # check that we have a good RC link
@@ -882,15 +932,36 @@ class TaskManagerNode(Node):
                 return True
         return False
 
-# ----- MAIN LOOP
+# --- STATE MACHINE
 
-    def init_loop(self):
-        '''
-        Times the main loop to run at 20Hz (every 0.05 seconds)
-        '''
-        
-        self.timer = self.create_timer(0.05, self.main_loop)
-        self.debug(True, "Task Manager initialized with 20Hz timer")
+    def state_transitions(self, old_state, new_state):
+            
+        # just entering the HOLD for the first time
+        if new_state == State.HOLD and old_state != State.HOLD:
+            # save the POSE from telemetry to hold at
+            self.saveDroneHoldPose()
+            if not self.arm_status.is_stowed:
+                self.stow_arm()
+
+        # just entering the HOLD for the first time
+        elif new_state == State.FAILSAFE and old_state != State.FAILSAFE:
+
+            # send a point to the drone to return to home position and 0.5m above the current flight level
+            current_position = self.telemetry.pos.pose.position                
+            self.sendWaypointNED(Point(x=0, y=0, z=(current_position.z - 0.5)))
+            self.has_failsafed = True
+
+            if not self.arm_status.is_stowed:
+                self.stow_arm()
+            
+        elif new_state == State.SEARCHING and old_state != State.SEARCHING:
+            # save the current position so we can spin around it
+            self.search_start_time = self.get_clock().now()
+            self.search_start_heading = self.telemetry.heading_degrees
+            self.saveDroneHoldPose()
+            self.debug(self.debug_drone, "Starting search pattern")
+
+# ----- MAIN LOOP
     
     def main_loop(self):
         state_msg = String()
@@ -922,34 +993,31 @@ class TaskManagerNode(Node):
             # this still leaves the state machine fully running and states switchable using SSH
             # the RC control can always switch off offboard mode and take over manually
         if self.has_failsafed == False:    
-            if self.checkForErrors() and not self.override_errors:
+            if self.checkForErrors():
                 self.debug(True, "ERRORS FOUND - MOVING TO HOLD STATE")
                 new_state = State.HOLD
                 
-            if self.checkFailSafe() and not self.override_errors:
+            if self.checkFailSafe():
                 self.debug(True, "FAILSAFE TRIGGERED - MOVING TO FAILSAFE STATE")     
-                    
-                # send a point to the drone to return to home position and 0.5m above the current flight level
-                current_position = self.telemetry.pos.pose.position                
-                self.sendWaypointNED(Point(x=0, y=0, z=(current_position.z - 0.5)))
-                   
                 new_state = State.FAILSAFE
-                self.has_failsafed = True
-            
-    #---- state transition switch here
-            # just entering the HOLD for the first time
-        if new_state == State.HOLD and self.state != State.HOLD:
-            # save the POSE from telemetry to hold at
-            self.saveDroneHoldPose()
-            
-        elif new_state == State.SEARCHING and self.state != State.SEARCHING:
-           # save the current position so we can spin around it
-           self.saveDroneHoldPose()
+        
+        # Any state transition behavior
+        self.state_transitions(self.state, new_state)
 
-        # Directly set _state to avoid setter loop
-        if not self.is_new_data_from_subscriber(self.state_setter_subscriber):
+        if self.is_new_data_from_subscriber(self.state_setter_subscriber):
+            # Use new state from message if there's an incoming state
+            self.state = self.new_state
+        else:
+            # otherwise just set next state from the state machine
             self.state = new_state
 
+    def init_loop(self):
+        '''
+        Times the main loop to run at 20Hz (every 0.05 seconds)
+        '''
+        
+        self.timer = self.create_timer(0.05, self.main_loop)
+        self.debug(True, "Task Manager initialized with 20Hz timer")
 
 def main(args=None):
     rclpy.init(args=args)

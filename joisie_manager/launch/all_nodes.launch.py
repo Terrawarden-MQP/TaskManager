@@ -31,7 +31,8 @@ def generate_launch_description():
         DeclareLaunchArgument("state_setter_topic", default_value="joisie_set_state", description="Topic for setting states"),
         DeclareLaunchArgument("state_topic",default_value="joisie_state",description="Topic to publish task manager state information"),
         DeclareLaunchArgument("manager_debug",default_value="0b11111",description="Flags for selecting which sections of code to debug"),
-        DeclareLaunchArgument("override_errors",default_value="false",description="Flag for overriding error checking (useful for ground testing). If true, changes all wait times to 0.5"),
+        DeclareLaunchArgument("override_errors",default_value="true",description="Flag for overriding error checking (useful for ground testing). If true, changes all wait times to 0.5"),
+        DeclareLaunchArgument("enable_stow",default_value="false",description="Flag for enabling automatic stow/unstow routine during hold/grasping states respectively"),
         
         # VBM arguments
         DeclareLaunchArgument('log_level', default_value='INFO', description='Log verbosity level'),
@@ -125,6 +126,7 @@ def generate_launch_description():
                 "state_topic": LaunchConfiguration("state_topic"),
                 "debug": LaunchConfiguration("manager_debug"),
                 "override_errors": LaunchConfiguration("override_errors"),
+                "enable_stow": LaunchConfiguration("enable_stow"),
             }]
         ),
         Node(
