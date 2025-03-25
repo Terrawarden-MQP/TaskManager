@@ -11,6 +11,7 @@ from geometry_msgs.msg import Pose2D, Point, PointStamped, PoseWithCovariance, P
 from builtin_interfaces.msg import Time
 import tf2_ros
 from collections import deque
+from collections.abc import Callable
 from std_srvs.srv import Empty
 
 # import transformations
@@ -162,7 +163,11 @@ class TaskManagerNode(Node):
         self._wait_time = 0
         self._wait_start_time = 0
 
-        # -----
+        # There's no need for an on_shutdown method here
+        # Drone Node listens for a heartbeat from Task Manager, 
+        # and will failsafe if no message is received for enough time
+        # rclpy.get_default_context().on_shutdown(self.on_shutdown)
+
     # SUBSCRIBERS
 
         self.state_setter_subscriber = self.create_subscription(String, 
@@ -189,7 +194,6 @@ class TaskManagerNode(Node):
                                                     self.get_parameter('arm_status_topic').value, 
                                                     self.get_setter("arm_status"), 10)
 
-        # -----
     # PUBLISHERS
 
         self.drone_publisher = self.create_publisher(DroneWaypoint, 
@@ -325,38 +329,6 @@ class TaskManagerNode(Node):
         self.received_new[self.arm_status_subscriber.topic] = True
         self._arm_status = ros_msg
 
-# ----- STOW FNs
-    def stow_arm(self):
-        # Call the stow_arm service
-        self.get_logger().info('Calling stow_arm service...')
-        request = Empty.Request()
-        future = self.stow_arm_client.call_async(request)
-        # Internal function for service debug messages
-        def service_debug_message(response):
-            try:
-                response.result()
-                return "Stow Service Success"
-            except:
-                return "Stow Service Failure"
-
-        future.add_done_callback(lambda response: self.debug(self.debug_arm, service_debug_message(response)))
-    
-    def unstow_arm(self):
-        # Call the unstow_arm service
-        self.get_logger().info('Calling unstow_arm service...')
-        request = Empty.Request()
-        future = self.unstow_arm_client.call_async(request)
-        # Internal function for service debug messages
-        def service_debug_message(response):
-            try:
-                response.result()
-                return "Unstow Service Success"
-            except:
-                return "Unstow Service Failure"
-
-        future.add_done_callback(lambda response: self.debug(self.debug_arm, service_debug_message(response)))
-    
-
 # ----- HELPER FNs
 
     def publish_helper(self, publisher, message) -> None:
@@ -437,8 +409,38 @@ class TaskManagerNode(Node):
         return self.hold_NED_Point, self.hold_Heading
 
 
+# ----- STOW FNs
+    def stow_arm(self):
+        # Call the stow_arm service
+        self.get_logger().info('Calling stow_arm service...')
+        request = Empty.Request()
+        future = self.stow_arm_client.call_async(request)
+        # Internal function for service debug messages
+        def service_debug_message(response):
+            try:
+                response.result()
+                return "Stow Service Success"
+            except:
+                return "Stow Service Failure"
 
+        future.add_done_callback(lambda response: self.debug(self.debug_arm, service_debug_message(response)))
     
+    def unstow_arm(self):
+        # Call the unstow_arm service
+        self.get_logger().info('Calling unstow_arm service...')
+        request = Empty.Request()
+        future = self.unstow_arm_client.call_async(request)
+        # Internal function for service debug messages
+        def service_debug_message(response):
+            try:
+                response.result()
+                return "Unstow Service Success"
+            except:
+                return "Unstow Service Failure"
+
+        future.add_done_callback(lambda response: self.debug(self.debug_arm, service_debug_message(response)))
+    
+
 # ----- DRONE HELPERS
 
     def sendWaypointNED(self, NEDpoint: Point, heading:float=None, max_ang_vel_deg_s:float=None, max_lin_vel_m_s:float=None, max_z_vel_m_s:float=None, max_lin_accel_m_s2:float=None):
@@ -663,7 +665,7 @@ class TaskManagerNode(Node):
         else:
             self.publish_helper(self.grasp_publisher, poseStampedMsg)
 
-    def set_wait(self, next_state: State, wait_time_s: float = 0.5, wait_until_fn: function = None) -> State:
+    def set_wait(self, next_state: State, wait_time_s: float = 0.5, wait_until_fn: Callable[[None], bool] = None) -> State:
         '''
         next_state is the desired state after wait time
         wait_time_s is time IN SECONDS
@@ -706,7 +708,7 @@ class TaskManagerNode(Node):
         if self.is_new_data_from_subscriber(self.telemetry_subscriber):
             if self.telemetry.is_flying == True and self.telemetry.is_offboard == True:
                 self.debug(self.debug_drone, "Drone is offboard and armed, switching to HOLD")
-                return State.HOLD        
+                return State.HOLD                
         
         return State.STARTUP
     
@@ -753,9 +755,9 @@ class TaskManagerNode(Node):
         self.droneHover()
         # listening for desired state happens async from this'
 
-        # TODO: this freaking weird thing, will throw the drone from the sky, because it will crash into into the ground the way it is here --JJ
-        if not self.arm_status.is_stowed:
-            self.stow_arm()
+    
+        # if not self.arm_status.is_stowed:
+        #     self.stow_arm()
 
         return State.HOLD
 
@@ -852,7 +854,7 @@ class TaskManagerNode(Node):
             self.sendWaypointNED(NED_pos, heading_deg, self.drone_params["precision_max_ang_vel_deg_s"], self.drone_params["precision_max_lin_vel_m_s"], self.drone_params["precision_max_z_vel_m_s"], self.drone_params["precision_max_lin_accel_m_s2"])    
 
             # if the new waypoint is within a certain distance of the robot, switch to grasping state
-            if self.isInRangeNED(NED_pos, 0.6, 0.4):  #TODO: ROS-tunable params
+            if self.isInRangeNED(NED_pos, 0.1, 0.1):  #TODO: ROS-tunable params
                 self.debug(self.debug_vbm, f'within range of object, begin GRASPING') 
                 # return State.GRASPING
 
@@ -940,8 +942,8 @@ class TaskManagerNode(Node):
         if new_state == State.HOLD and old_state != State.HOLD:
             # save the POSE from telemetry to hold at
             self.saveDroneHoldPose()
-            if not self.arm_status.is_stowed:
-                self.stow_arm()
+            # if not self.arm_status.is_stowed:
+            #     self.stow_arm()
 
         # just entering the HOLD for the first time
         elif new_state == State.FAILSAFE and old_state != State.FAILSAFE:
@@ -951,8 +953,8 @@ class TaskManagerNode(Node):
             self.sendWaypointNED(Point(x=0, y=0, z=(current_position.z - 0.5)))
             self.has_failsafed = True
 
-            if not self.arm_status.is_stowed:
-                self.stow_arm()
+            # if not self.arm_status.is_stowed:
+            #     self.stow_arm()
             
         elif new_state == State.SEARCHING and old_state != State.SEARCHING:
             # save the current position so we can spin around it
