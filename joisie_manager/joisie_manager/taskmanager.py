@@ -22,6 +22,8 @@ import time
 
 class State(Enum):
     STARTUP = "STARTUP"
+    FAILSAFE = "FAILSAFE"
+    LANDING = "LAND"
     WAITING = "WAIT"
     HOLD = "HOLD"
     SEARCHING = "SEARCH"
@@ -132,6 +134,9 @@ class TaskManagerNode(Node):
         # STORE PREVIOUS MESSAGE SENT PER TOPIC
         self.last_sent_messages = {}
         self.msg_timeout = 3
+        
+        # failsafe variables
+        self.has_failsafed = False
         
         # hold state variables
         self.hold_NED_Point = Point()
@@ -425,6 +430,41 @@ class TaskManagerNode(Node):
                 return State.HOLD        
         
         return State.STARTUP
+    
+    
+# ----- FAILSAFE
+
+    def failsafe(self) -> State:
+        '''
+        upon entering this state keep slowly returning to home armed position and land
+        used only in case the RC link has been lost to prevent runaway of the system
+        '''
+
+        # when it is within a meter of the home position in XY only
+        if self.isInRangeNED(Point(x=0, y=0, z=-10), 1.0, 10000.0):
+            self.debug(self.debug_drone, "Drone failsafe is in range of home position, switching to LANDING")    
+            
+            # send the setpoint to go down the current above ground altitude (+ 2 extra meters for good measure)
+            # the PX4 autopilot should detect the landing, and disarm the drone automatically
+            current_NED_pos = self.telemetry.pos.pose.position
+            dist_in_Z_to_ground = current_NED_pos.z + self.telemetry.altitude_above_ground_m + 2
+            point_to_land = self.FLU2NED(Point(x=0, y=0, z=dist_in_Z_to_ground))
+            self.sendWaypointNED(point_to_land, 0)
+            return State.LANDING
+        
+        return State.FAILSAFE
+    
+# ----- LANDING
+
+    def land(self) -> State:
+        '''
+        land the drone by issuing a PX4 command to land
+        this is a failsafe state, so it will keep trying to land until it is on the ground
+        '''
+        
+        # self.sendWaypointNED(Point(x=0, y=0, z=0), 0, self.drone_params["precision_max_ang_vel_deg_s"], self.drone_params["precision_max_lin_vel_m_s"], self.drone_params["precision_max_z_vel_m_s"], self.drone_params["precision_max_lin_accel_m_s2"])                   
+        
+        return State.LANDING
 
 # ----- HOLD
             
@@ -523,7 +563,7 @@ class TaskManagerNode(Node):
         """
         Convert a local FLU offset in meters to NED coordinates
         yaw is Heading in DEGREES 0 to 360
-        Returns the offset as a Point in NED, not the global NED
+        Returns the offset as a Point in NED
         """
 
         # if no heading is given, keep current heading
@@ -797,7 +837,7 @@ class TaskManagerNode(Node):
 
     def checkForErrors(self) -> bool:
         '''
-        checks for ground clearence beneath the drone
+        checks for ground clearence beneath the drone and arm errors messages
         prints errors + wardnings to ros logger
         
         returns True if there is error
@@ -807,18 +847,40 @@ class TaskManagerNode(Node):
         # Set mode to State.HOLD if any errors
         if self.is_new_data_from_subscriber(self.telemetry_subscriber):
             
-            # check that we have more than 0.35m of ground clearance beneath the drone
+            # check that we have more than 0.4m of ground clearance beneath the drone
             if self.telemetry.altitude_above_ground < 0.4:
                 # check that we are not too low
                 self.debug(self.debug_drone, "Ground Too Close, Abort")
                 return True          
             
-            if self.telemetry.altitude_above_ground < 1.0:
+            if self.telemetry.altitude_above_ground < 0.8:
                 # check that we are not too low
                 self.debug(self.debug_drone, "Ground Proximity Warning")
-                return False
+                return False        
                 
         return False # TODO
+    
+    def checkFailSafe(self) -> bool:
+        '''
+        checks for failsafe condition of RC link lost    
+        returns True if there is error
+        
+        the RC control can always switch off offboard mode and take over manually
+        '''
+        
+        if self.is_new_data_from_subscriber(self.telemetry_subscriber):
+            # check that we have a good RC link
+            if self.telemetry.has_rc_link == False:
+                # check that we are not too low
+                self.debug(self.debug_drone, "No RC Link")
+                return True        
+            
+            # if battery is below 10%
+            if self.telemetry.battery_percentage < 10:
+                # check that we are not too low
+                self.debug(self.debug_drone, "Battery Low")
+                return True
+        return False
 
 # ----- MAIN LOOP
 
@@ -838,7 +900,11 @@ class TaskManagerNode(Node):
         new_state = self.state
         
         if self.state == State.STARTUP:
-            new_state = self.startup()        
+            new_state = self.startup()    
+        elif self.state == State.FAILSAFE:
+            new_state = self.failsafe()
+        elif self.state == State.LANDING:
+            new_state = self.land()
         elif self.state == State.HOLD:
             new_state = self.hold()
         elif self.state == State.SEARCHING:
@@ -852,9 +918,23 @@ class TaskManagerNode(Node):
         elif self.state == State.WAITING:
             new_state = self.wait()
             
-        if self.checkForErrors() and not self.override_errors:
-            self.debug(True, "ERRORS FOUND - MOVING TO HOLD STATE")
-            new_state = State.HOLD
+        # if we are in normal operation, check for potential errors and failsafes
+            # this still leaves the state machine fully running and states switchable using SSH
+            # the RC control can always switch off offboard mode and take over manually
+        if self.has_failsafed == False:    
+            if self.checkForErrors() and not self.override_errors:
+                self.debug(True, "ERRORS FOUND - MOVING TO HOLD STATE")
+                new_state = State.HOLD
+                
+            if self.checkFailSafe() and not self.override_errors:
+                self.debug(True, "FAILSAFE TRIGGERED - MOVING TO FAILSAFE STATE")     
+                    
+                # send a point to the drone to return to home position and 0.5m above the current flight level
+                current_position = self.telemetry.pos.pose.position                
+                self.sendWaypointNED(Point(x=0, y=0, z=(current_position.z - 0.5)))
+                   
+                new_state = State.FAILSAFE
+                self.has_failsafed = True
             
     #---- state transition switch here
             # just entering the HOLD for the first time
