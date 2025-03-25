@@ -132,12 +132,13 @@ class TaskManagerNode(Node):
                                f" Detection {self.debug_detect}, VBM {self.debug_vbm}, Arm {self.debug_arm}")
         # INITIAL STATE
         self._state = State.STARTUP
+        self._received_state = State.HOLD
         self._telemetry = DroneTelemetry()
         self.telemetry_queue = deque()
         self._detection = Detection2D()
         self._extract_pt = PointStamped()
         self._raw_grasp = PoseStamped()
-        # self._arm_status = DynaArmStatus()
+        # self._arm_status = DynaArmStatus()    
 
         # STORE PREVIOUS MESSAGE SENT PER TOPIC
         self.last_sent_messages = {}
@@ -207,7 +208,7 @@ class TaskManagerNode(Node):
         self.state_publisher = self.create_publisher(String,
                                                     self.get_parameter('state_topic').value, 10)
                 
-        # received_new needs to exist for the properties but needs the subscribers to exist as well
+        # new needs to exist for the properties but needs the subscribers to exist as well
         self.received_new = {
             self.state_setter_subscriber.topic: False,
             # self.image_subscriber.topic: False,
@@ -215,7 +216,7 @@ class TaskManagerNode(Node):
             self.telemetry_subscriber.topic: False,
             self.extract_subscriber.topic: False,
             self.grasp_subscriber.topic: False,
-            # self.arm_status_subscriber.topic: False,
+            self.arm_status_subscriber.topic: False,
         }  
 
         # initializes the drone state switching loop timer at the bottom of the file
@@ -234,7 +235,6 @@ class TaskManagerNode(Node):
 
     @property
     def state(self) -> State:
-        self.received_new[self.state_setter_subscriber.topic] = False
         return self._state
 
     @state.setter
@@ -242,14 +242,26 @@ class TaskManagerNode(Node):
         if value not in State:
             raise ValueError(f"Invalid state: {value}")
         self._state = value
+
+    
+    @property
+    def received_state(self) -> State:
+        self.received_new[self.state_setter_subscriber.topic] = False
+        return self._received_state
+
+    @received_state.setter
+    def received_state(self, value) -> State:
+        if value not in State:
+            raise ValueError(f"Invalid state: {value}")
+        self._received_state = value
     
     def receive_desired_state(self, ros_msg: String) -> None:
         self.received_new[self.state_setter_subscriber.topic] = True
         try:
             string = ros_msg.data
-            self.new_state = State(string)
-            self.debug(True, f"State changed due to incoming message: {string}")
-        except:
+            self.received_state = State(string)
+            self.debug(True, f"State changed queued from incoming message: {string, self._received_state}")
+        except ValueError:
             self.debug(True, f"[WARNING] No matching state for string: {string}")
 
     @property
@@ -991,6 +1003,11 @@ class TaskManagerNode(Node):
         elif self.state == State.WAITING:
             new_state = self.wait()
             
+        if self.is_new_data_from_subscriber(self.state_setter_subscriber):
+            # Use new state from message if there's an incoming state
+            self.debug(self.debug_publish,f"Updating state from received message: {self.received_state}")
+            new_state = self.received_state            
+            
         # if we are in normal operation, check for potential errors and failsafes
             # this still leaves the state machine fully running and states switchable using SSH
             # the RC control can always switch off offboard mode and take over manually
@@ -1003,15 +1020,9 @@ class TaskManagerNode(Node):
                 self.debug(True, "FAILSAFE TRIGGERED - MOVING TO FAILSAFE STATE")     
                 new_state = State.FAILSAFE
         
-        # Any state transition behavior
-        self.state_transitions(self.state, new_state)
-
-        if self.is_new_data_from_subscriber(self.state_setter_subscriber):
-            # Use new state from message if there's an incoming state
-            self.state = self.new_state
-        else:
-            # otherwise just set next state from the state machine
-            self.state = new_state
+        # any state transition behavior and set state
+        self.state_transitions(self.state, new_state)     
+        self.state = new_state
 
     def init_loop(self):
         '''
