@@ -10,14 +10,15 @@ from terrawarden_interfaces.msg import DroneTelemetry, DroneWaypoint, ArmStatus
 from geometry_msgs.msg import Pose2D, Point, PointStamped, PoseWithCovariance, PoseStamped
 from builtin_interfaces.msg import Time
 import tf2_ros
-from collections import deque
-from collections.abc import Callable
 from std_srvs.srv import Empty
+
 
 # import transformations
 import cv2
 import numpy as np
 import os
+from collections.abc import Callable
+from collections import deque
 import math
 from enum import Enum, auto
 import time
@@ -53,25 +54,24 @@ class TaskManagerNode(Node):
             "slow_max_ang_vel_deg_s": 30.0,
             "slow_max_lin_accel_m_s2": 0.25,
             "slow_max_z_vel_m_s": 0.5,
-            "precision_max_lin_vel_m_s": 0.1,
+            "precision_max_lin_vel_m_s": 0.3,
             "precision_max_ang_vel_deg_s": 20.0,
-            "precision_max_lin_accel_m_s2": 0.1,
-            "precision_max_z_vel_m_s": 0.1,
+            "precision_max_lin_accel_m_s2": 0.3,
+            "precision_max_z_vel_m_s": 0.3,
         }
-
-        ### STOW ARM SERVICE CLIENT
-        self.stow_arm_client = self.create_client(Empty, 'stow_arm')
-        self.unstow_arm_client = self.create_client(Empty, 'unstow_arm')
 
         ### TOPIC DECLARATION - ALL PARAMETERIZED THROUGH ROS2 LAUNCH
 
         ### DRONE TOPICS ------------------------------------------------------
-
-        # Topic for sending target pose to drone
+        # param_name_topic_tuples = [
+        #     ## Topic for sending target pose to drone
+        #     ('drone_pose_topic', 'drone/waypoint'),
+        #     ## Topic for receiving Telemetry from Drone Node
+        #     ('drone_telemetry_topic', 'drone/telemetry')
+        # ]
         self.declare_parameter('drone_pose_topic', 'drone/waypoint')
         self.declare_parameter('drone_telemetry_topic', 'drone/telemetry')
 
-        ## Topic for receiving Telemetry from Drone Node
         # self.declare_parameter('telemetry', 'joisie_telemetry')
 
         # Topic for sending target pose to drone
@@ -104,6 +104,12 @@ class TaskManagerNode(Node):
 
         # Topic for InRangeOfObj Service Call to Arm Node
         self.declare_parameter('arm_service_topic', 'joisie_arm_inrange_service')
+
+        # Topic for Stow Service Call to Arm Node
+        self.declare_parameter('arm_stow_service_topic', 'stow_arm')
+
+        # Topic for Unstow Service Call to Arm Node
+        self.declare_parameter('arm_unstow_service_topic', 'unstow_arm')
 
         ### STATE TOPICS --------------------------------------------------
         
@@ -195,6 +201,11 @@ class TaskManagerNode(Node):
                                                     self.get_parameter('arm_status_topic').value, 
                                                     self.get_setter("arm_status"), 10)
 
+    ### STOW ARM SERVICE CLIENT
+
+        self.stow_arm_client = self.create_client(Empty, self.get_parameter('arm_stow_service_topic').value)
+        self.unstow_arm_client = self.create_client(Empty, self.get_parameter('arm_unstow_service_topic').value)
+
     # PUBLISHERS
 
         self.drone_publisher = self.create_publisher(DroneWaypoint, 
@@ -273,7 +284,6 @@ class TaskManagerNode(Node):
     def detection(self, ros_msg: Detection2D) -> None:
         self.received_new[self.detection_subscriber.topic] = True
         self._detection = ros_msg
-        
 
     @property
     def telemetry(self) -> DroneTelemetry:
@@ -957,7 +967,9 @@ class TaskManagerNode(Node):
             # if not self.arm_status.is_stowed:
             #     self.stow_arm()
 
-        # just entering the HOLD for the first time
+        if new_state == State.GRASPING and old_state != State.GRASPING:
+            self.saveDroneHoldPose()
+
         elif new_state == State.FAILSAFE and old_state != State.FAILSAFE:
 
             # send a point to the drone to return to home position and 0.5m above the current flight level
@@ -968,6 +980,10 @@ class TaskManagerNode(Node):
             # if not self.arm_status.is_stowed:
             #     self.stow_arm()
             
+        # TODO:
+        elif new_state != State.FAILSAFE and old_state == State.FAILSAFE:
+            self.has_failsafed = False
+
         elif new_state == State.SEARCHING and old_state != State.SEARCHING:
             # save the current position so we can spin around it
             self.search_start_time = self.get_clock().now()
@@ -984,6 +1000,12 @@ class TaskManagerNode(Node):
 
         new_state = self.state
         
+        # match self.state:
+        #     case State.STARTUP:
+        #         new_state = self.startup()
+
+        #     etc.
+
         if self.state == State.STARTUP:
             new_state = self.startup()    
         elif self.state == State.FAILSAFE:
