@@ -45,19 +45,19 @@ class TaskManagerNode(Node):
         super().__init__('task_manager')
         
         # drone flight parameters dictionary
-        self.drone_params = {
-            "fast_max_lin_vel_m_s": 3.0,
-            "fast_max_ang_vel_deg_s": 45.0,
-            "fast_max_lin_accel_m_s2": 0.5,
-            "fast_max_z_vel_m_s": 1.2,
-            "slow_max_lin_vel_m_s": 0.5,
-            "slow_max_ang_vel_deg_s": 30.0,
-            "slow_max_lin_accel_m_s2": 0.25,
-            "slow_max_z_vel_m_s": 0.5,
-            "precision_max_lin_vel_m_s": 0.3,
-            "precision_max_ang_vel_deg_s": 20.0,
-            "precision_max_lin_accel_m_s2": 0.3,
-            "precision_max_z_vel_m_s": 0.3,
+        self.droneParams = {
+            "fastMaxLinVel_m_s": 3.0,
+            "fastMaxAngVel_deg_s": 45.0,
+            "fastMaxLinAccel_m_s2": 0.5,
+            "fastMaxZVel_m_s": 1.2,
+            "slowMaxLinVel_m_s": 0.5,
+            "slowMaxAngVel_deg_s": 30.0,
+            "slowMaxLinAccel_m_s2": 0.25,
+            "slowMaxZVel_m_s": 0.5,
+            "precisionMaxLinVel_m_s": 0.3,
+            "precisionMaxAngVel_deg_s": 20.0,
+            "precisionMaxLinAccel_m_s2": 0.3,
+            "precisionMaxZVel_m_s": 0.3,
         }
 
         ### TOPIC DECLARATION - ALL PARAMETERIZED THROUGH ROS2 LAUNCH
@@ -69,54 +69,54 @@ class TaskManagerNode(Node):
         #     ## Topic for receiving Telemetry from Drone Node
         #     ('drone_telemetry_topic', 'drone/telemetry')
         # ]
-        self.declare_parameter('drone_pose_topic', 'drone/waypoint')
-        self.declare_parameter('drone_telemetry_topic', 'drone/telemetry')
+        self.declareParameter('drone_pose_topic', 'drone/waypoint')
+        self.declareParameter('drone_telemetry_topic', 'drone/telemetry')
 
-        # self.declare_parameter('telemetry', 'joisie_telemetry')
+        # self.declareParameter('telemetry', 'joisie_telemetry')
 
         # Topic for sending target pose to drone
-        # self.declare_parameter('drone_pose_topic', 'joisie_target_pose')
+        # self.declareParameter('drone_pose_topic', 'joisie_target_pose')
 
         ### DETECTION TOPICS --------------------------------------------------
         
         # Topic for receiving Detection from LiveDetect Node
-        self.declare_parameter('detection_topic', 'joisie_detection')
+        self.declareParameter('detection_topic', 'joisie_detection')
 
         # Topic for sending detected object centroid to VBM
-        self.declare_parameter('centroid_topic', 'joisie_detected_centroid')
+        self.declareParameter('centroid_topic', 'joisie_detected_centroid')
 
         # Topic for receiving 3D point from VBM extract_cluster
-        self.declare_parameter('vbm_extract_topic', 'joisie_extract_centroid')
+        self.declareParameter('vbm_extract_topic', 'joisie_extract_centroid')
 
         # Topic for receiving grasp from VBM optimal_grasp
-        self.declare_parameter('vbm_grasp_topic', 'joisie_grasp_read')
+        self.declareParameter('vbm_grasp_topic', 'joisie_grasp_read')
 
         ### ARM TOPICS --------------------------------------------------------
 
         # Topic for sending grasp to arm
-        self.declare_parameter('arm_grasp_topic', 'joisie_grasp_send')
+        self.declareParameter('arm_grasp_topic', 'joisie_grasp_send')
 
         # Topic for sending grasp to arm WITH TRAJECTORY
-        self.declare_parameter('traj_arm_grasp_topic', 'joisie_grasp_send')
+        self.declareParameter('traj_arm_grasp_topic', 'joisie_grasp_send')
 
         # CustomArmMsg from Arm Node
-        self.declare_parameter('arm_status_topic', 'joisie_arm_status')
+        self.declareParameter('arm_status_topic', 'joisie_arm_status')
 
         # Topic for InRangeOfObj Service Call to Arm Node
-        self.declare_parameter('arm_service_topic', 'joisie_arm_inrange_service')
+        self.declareParameter('arm_service_topic', 'joisie_arm_inrange_service')
 
         # Topic for Stow Service Call to Arm Node
-        self.declare_parameter('arm_stow_service_topic', 'stow_arm')
+        self.declareParameter('arm_stow_service_topic', 'stow_arm')
 
         # Topic for Unstow Service Call to Arm Node
-        self.declare_parameter('arm_unstow_service_topic', 'unstow_arm')
+        self.declareParameter('arm_unstow_service_topic', 'unstow_arm')
 
         ### STATE TOPICS --------------------------------------------------
         
         # Topic to send state information
-        self.declare_parameter('state_topic','joisie_state')
+        self.declareParameter('state_topic','joisie_state')
 
-        self.declare_parameter('state_setter_topic', 'joisie_set_state')
+        self.declareParameter('state_setter_topic', 'joisie_set_state')
         
         # -----
         # SERVICES
@@ -125,20 +125,20 @@ class TaskManagerNode(Node):
 
         # -----
         # DEBUG
-        self.declare_parameter('override_errors',False)
-        self.declare_parameter('debug', 0b11111)
-        self.override_errors = self.get_parameter('override_errors').value
+        self.declareParameter('overrideErrors',False)
+        self.declareParameter('debug', 0b11111)
+        self.overrideErrors = self.get_parameter('overrideErrors').value
         debug = self.get_parameter('debug').value
-        self.debug_publish  = bool(debug & 0b10000)
-        self.debug_drone    = bool(debug & 0b01000)
-        self.debug_detect   = bool(debug & 0b00100)
-        self.debug_vbm      = bool(debug & 0b00010)
-        self.debug_arm      = bool(debug & 0b00001)
-        self.get_logger().info(f"Debug Flags: Publish: {self.debug_publish}, Drone {self.debug_drone},"+
-                               f" Detection {self.debug_detect}, VBM {self.debug_vbm}, Arm {self.debug_arm}")
+        self.debugPublish  = bool(debug & 0b10000)
+        self.debugDrone    = bool(debug & 0b01000)
+        self.debugDetect   = bool(debug & 0b00100)
+        self.debugVBM      = bool(debug & 0b00010)
+        self.debugArm      = bool(debug & 0b00001)
+        self.get_logger().info(f"Debug Flags: Publish: {self.debugPublish}, Drone {self.debugDrone},"+
+                               f" Detection {self.debugDetect}, VBM {self.debugVBM}, Arm {self.debugArm}")
         # INITIAL STATE
         self._state = State.STARTUP
-        self._received_state = State.HOLD
+        self._recievedState = State.HOLD
         self._telemetry = DroneTelemetry()
         self.telemetry_queue = deque()
         self._detection = Detection2D()
@@ -147,26 +147,26 @@ class TaskManagerNode(Node):
         # self._arm_status = DynaArmStatus()    
 
         # STORE PREVIOUS MESSAGE SENT PER TOPIC
-        self.last_sent_messages = {}
-        self.msg_timeout = 3
+        self.lastSentMessage = {}
+        self.msgTimeout = 3
         
         # failsafe variables
-        self.has_failsafed = False
+        self.hasFailsafed = False
         
         # hold state variables
-        self.hold_NED_Point = Point()
-        self.hold_Heading = 0.0
+        self.holdNEDPoint = Point()
+        self.holdHeading = 0.0
 
         # search state tracking
         # TOOD: add zig-zag GPS pattern
             # for now it could use the hold state pos tracking, but I will keep it like this for the future
-        self.search_start_time = None
-        self.search_start_heading = None
-        self.entry_point = None
-        self.border_points = []
+        self.searchStartTime = None
+        self.searchStartHeading = None
+        self.entryPoint = None
+        self.borderPoints = []
 
         # waiting, stowing, unstowing state variables
-        self.next_state = State.HOLD
+        self.nextState = State.HOLD
         self._wait_time = 0
         self._wait_start_time = 0
 
@@ -177,61 +177,61 @@ class TaskManagerNode(Node):
 
     # SUBSCRIBERS
 
-        self.state_setter_subscriber = self.create_subscription(String, 
+        self.stateSetterSubscriber = self.create_subscription(String, 
                                             self.get_parameter('state_setter_topic').value, 
-                                            self.receive_desired_state, 10)
+                                            self.recieveDesiredState, 10)
         
-        self.detection_subscriber = self.create_subscription(Detection2D, 
+        self.detectionSubscriber = self.create_subscription(Detection2D, 
                                                     self.get_parameter('detection_topic').value, 
-                                                    self.get_setter("detection"), 10)
+                                                    self.getSetter("detection"), 10)
         
-        self.telemetry_subscriber = self.create_subscription(DroneTelemetry, 
+        self.telemetrySubscriber = self.create_subscription(DroneTelemetry, 
                                                     self.get_parameter('drone_telemetry_topic').value, 
-                                                    self.get_setter("telemetry"), 10)
+                                                    self.getSetter("telemetry"), 10)
         
-        self.extract_subscriber = self.create_subscription(PointStamped,
+        self.extractSubscriber = self.create_subscription(PointStamped,
                                                     self.get_parameter('vbm_extract_topic').value,
-                                                    self.get_setter("extract_pt"), 10)
+                                                    self.getSetter("extract_pt"), 10)
         
-        self.grasp_subscriber = self.create_subscription(PoseStamped,
+        self.graspSubscriber = self.create_subscription(PoseStamped,
                                                     self.get_parameter('vbm_grasp_topic').value, 
-                                                    self.get_setter("raw_grasp"), 10)
+                                                    self.getSetter("raw_grasp"), 10)
 
-        self.arm_status_subscriber = self.create_subscription(ArmStatus, 
+        self.armStatusSubscriber = self.create_subscription(ArmStatus, 
                                                     self.get_parameter('arm_status_topic').value, 
-                                                    self.get_setter("arm_status"), 10)
+                                                    self.getSetter("arm_status"), 10)
 
     ### STOW ARM SERVICE CLIENT
 
-        self.stow_arm_client = self.create_client(Empty, self.get_parameter('arm_stow_service_topic').value)
-        self.unstow_arm_client = self.create_client(Empty, self.get_parameter('arm_unstow_service_topic').value)
+        self.stowArmClient = self.create_client(Empty, self.get_parameter('arm_stow_service_topic').value)
+        self.unstowArmClient = self.create_client(Empty, self.get_parameter('arm_unstow_service_topic').value)
 
     # PUBLISHERS
 
-        self.drone_publisher = self.create_publisher(DroneWaypoint, 
+        self.dronePublisher = self.create_publisher(DroneWaypoint, 
                                                     self.get_parameter('drone_pose_topic').value, 10)
-        # self.centroid_publisher = self.create_publisher(Pose2D, # this publisher is redundant and not used
+        # self.centroidPublisher = self.create_publisher(Pose2D, # this publisher is redundant and not used
         #                                             self.get_parameter('centroid_topic').value, 10)
-        self.grasp_publisher = self.create_publisher(PoseStamped, 
+        self.graspPublisher = self.create_publisher(PoseStamped, 
                                                     self.get_parameter('arm_grasp_topic').value, 10)
-        self.traj_grasp_publisher = self.create_publisher(PoseStamped, 
+        self.trajGraspPublisher = self.create_publisher(PoseStamped, 
                                                     self.get_parameter('traj_arm_grasp_topic').value, 10)
-        self.state_publisher = self.create_publisher(String,
+        self.statePublisher = self.create_publisher(String,
                                                     self.get_parameter('state_topic').value, 10)
                 
         # new needs to exist for the properties but needs the subscribers to exist as well
         self.received_new = {
-            self.state_setter_subscriber.topic: False,
+            self.stateSetterSubscriber.topic: False,
             # self.image_subscriber.topic: False,
-            self.detection_subscriber.topic: False,
-            self.telemetry_subscriber.topic: False,
-            self.extract_subscriber.topic: False,
-            self.grasp_subscriber.topic: False,
-            self.arm_status_subscriber.topic: False,
+            self.detectionSubscriber.topic: False,
+            self.telemetrySubscriber.topic: False,
+            self.extractSubscriber.topic: False,
+            self.graspSubscriber.topic: False,
+            self.armStatusSubscriber.topic: False,
         }  
 
         # initializes the drone state switching loop timer at the bottom of the file
-        self.init_loop()
+        self.initLoop()
 
 
 # ----- PROPERTIES
@@ -241,7 +241,7 @@ class TaskManagerNode(Node):
     
     # When python initializes properties, it hides the setters so that they get called when you do "self.property ="
     # This function retrieves the setter manually for any of the properties for the purposes of subscriber callbacks
-    def get_setter(self, property):
+    def getSetter(self, property):
         return lambda value: getattr(TaskManagerNode, property).fset(self, value)
 
     @property
@@ -256,43 +256,43 @@ class TaskManagerNode(Node):
 
     
     @property
-    def received_state(self) -> State:
-        self.received_new[self.state_setter_subscriber.topic] = False
-        return self._received_state
+    def recievedState(self) -> State:
+        self.received_new[self.stateSetterSubscriber.topic] = False
+        return self._recievedState
 
-    @received_state.setter
-    def received_state(self, value) -> State:
+    @recievedState.setter
+    def recievedState(self, value) -> State:
         if value not in State:
             raise ValueError(f"Invalid state: {value}")
-        self._received_state = value
+        self._recievedState = value
     
-    def receive_desired_state(self, ros_msg: String) -> None:
-        self.received_new[self.state_setter_subscriber.topic] = True
+    def recieveDesiredState(self, ros_msg: String) -> None:
+        self.received_new[self.stateSetterSubscriber.topic] = True
         try:
             string = ros_msg.data
-            self.received_state = State(string)
-            self.debug(True, f"State changed queued from incoming message: {string, self._received_state}")
+            self.recievedState = State(string)
+            self.debug(True, f"State changed queued from incoming message: {string, self._recievedState}")
         except ValueError:
             self.debug(True, f"[WARNING] No matching state for string: {string}")
 
     @property
     def detection(self) -> Detection2D:
-        self.received_new[self.detection_subscriber.topic] = False
+        self.received_new[self.detectionSubscriber.topic] = False
         return self._detection
 
     @detection.setter
     def detection(self, ros_msg: Detection2D) -> None:
-        self.received_new[self.detection_subscriber.topic] = True
+        self.received_new[self.detectionSubscriber.topic] = True
         self._detection = ros_msg
 
     @property
     def telemetry(self) -> DroneTelemetry:
-        self.received_new[self.telemetry_subscriber.topic] = False
+        self.received_new[self.telemetrySubscriber.topic] = False
         return self._telemetry
 
     @telemetry.setter
     def telemetry(self, ros_msg: DroneTelemetry) -> None:
-        self.received_new[self.telemetry_subscriber.topic] = True
+        self.received_new[self.telemetrySubscriber.topic] = True
         self._telemetry = ros_msg
 
         #                               Timestamp              Message
@@ -312,23 +312,23 @@ class TaskManagerNode(Node):
 
     @property
     def raw_grasp(self) -> PoseStamped:
-        self.received_new[self.grasp_subscriber.topic] = False
+        self.received_new[self.graspSubscriber.topic] = False
         return self._raw_grasp
 
     @raw_grasp.setter
     def raw_grasp(self, ros_msg: PoseStamped) -> None:
-        self.received_new[self.grasp_subscriber.topic] = True
+        self.received_new[self.graspSubscriber.topic] = True
         self._raw_grasp = ros_msg
 
 
     @property
     def extract_pt(self) -> PointStamped:
-        self.received_new[self.extract_subscriber.topic] = False
+        self.received_new[self.extractSubscriber.topic] = False
         return self._extract_pt
     
     @extract_pt.setter
     def extract_pt(self, ros_msg: PointStamped) -> None:
-        self.received_new[self.extract_subscriber.topic] = True
+        self.received_new[self.extractSubscriber.topic] = True
         self._extract_pt = ros_msg
 
 
@@ -343,12 +343,12 @@ class TaskManagerNode(Node):
 
     @property
     def arm_status(self) -> ArmStatus:
-        self.received_new[self.arm_status_subscriber.topic] = False
+        self.received_new[self.armStatusSubscriber.topic] = False
         return self._arm_status
     
     @arm_status.setter
     def arm_status(self, ros_msg: ArmStatus):
-        self.received_new[self.arm_status_subscriber.topic] = True
+        self.received_new[self.armStatusSubscriber.topic] = True
         self._arm_status = ros_msg
 
 # ----- HELPER FNs
@@ -361,18 +361,18 @@ class TaskManagerNode(Node):
         if self.is_outgoing_new_msg(publisher, message):
             # DEBUG REPORTS ALL OUTGOING MESSAGES
             # Node name, topic, message, extra debug info (if present)
-            self.debug(self.debug_publish, f"Topic - {publisher.topic}\tMessage - {message}")
+            self.debug(self.debugPublish, f"Topic - {publisher.topic}\tMessage - {message}")
 
             publisher.publish(message)
-            self.last_sent_messages[publisher.topic] = {"msg": message, "time": time.time()}
+            self.lastSentMessage[publisher.topic] = {"msg": message, "time": time.time()}
 
     def is_outgoing_new_msg(self, publisher, message) -> bool:
         '''RETURNS TRUE IF THIS IS A NEW OUTGOING MESSAGE'''
 
-        return not (publisher.topic in self.last_sent_messages 
-                    and self.last_sent_messages[publisher.topic]["msg"] == message
-                    # Additionally, send message if previous message is more than {self.msg_timeout} seconds old
-                    and self.last_sent_messages[publisher.topic]["time"] > time.time() - self.msg_timeout)
+        return not (publisher.topic in self.lastSentMessage 
+                    and self.lastSentMessage[publisher.topic]["msg"] == message
+                    # Additionally, send message if previous message is more than {self.msgTimeout} seconds old
+                    and self.lastSentMessage[publisher.topic]["time"] > time.time() - self.msgTimeout)
     
     def is_new_data_from_subscriber(self, subscriber):
         '''RETURNS TRUE IF THERE WAS A NEW MESSAGE RECEIVED ON THIS SUBSCRIBER'''
@@ -384,10 +384,10 @@ class TaskManagerNode(Node):
         if there is no last sent message w/ that topic, returns None
         '''
 
-        if not publisher.topic in self.last_sent_messages:
+        if not publisher.topic in self.lastSentMessage:
             return None
             
-        return self.last_sent_messages[publisher.topic]["msg"]
+        return self.lastSentMessage[publisher.topic]["msg"]
 
     def debug(self, if_debug:bool, string:String) -> None:
         '''
@@ -424,11 +424,11 @@ class TaskManagerNode(Node):
         return self.telemetry_queue[closest[1]][1]
             
     def saveDroneHoldPose(self):
-        self.hold_NED_Point = self.telemetry.pos.pose.position
-        self.hold_Heading = self.telemetry.heading_degrees
+        self.holdNEDPoint = self.telemetry.pos.pose.position
+        self.holdHeading = self.telemetry.heading_degrees
         
     def retrieveDroneHoldPose(self):
-        return self.hold_NED_Point, self.hold_Heading
+        return self.holdNEDPoint, self.holdHeading
 
 
 # ----- STOW FNs
@@ -436,7 +436,7 @@ class TaskManagerNode(Node):
         # Call the stow_arm service
         self.get_logger().info('Calling stow_arm service...')
         request = Empty.Request()
-        future = self.stow_arm_client.call_async(request)
+        future = self.stowArmClient.call_async(request)
         # Internal function for service debug messages
         def service_debug_message(response):
             try:
@@ -445,13 +445,13 @@ class TaskManagerNode(Node):
             except:
                 return "Stow Service Failure"
 
-        future.add_done_callback(lambda response: self.debug(self.debug_arm, service_debug_message(response)))
+        future.add_done_callback(lambda response: self.debug(self.debugArm, service_debug_message(response)))
     
     def unstow_arm(self):
         # Call the unstow_arm service
         self.get_logger().info('Calling unstow_arm service...')
         request = Empty.Request()
-        future = self.unstow_arm_client.call_async(request)
+        future = self.unstowArmClient.call_async(request)
         # Internal function for service debug messages
         def service_debug_message(response):
             try:
@@ -460,7 +460,7 @@ class TaskManagerNode(Node):
             except:
                 return "Unstow Service Failure"
 
-        future.add_done_callback(lambda response: self.debug(self.debug_arm, service_debug_message(response)))
+        future.add_done_callback(lambda response: self.debug(self.debugArm, service_debug_message(response)))
     
 
 # ----- DRONE HELPERS
@@ -485,18 +485,18 @@ class TaskManagerNode(Node):
 
         # Set the velocity and acceleration data
         if max_ang_vel_deg_s: waypoint_msg.max_ang_vel_deg_s = max_ang_vel_deg_s
-        else: waypoint_msg.max_ang_vel_deg_s = self.drone_params["precision_max_ang_vel_deg_s"]
+        else: waypoint_msg.max_ang_vel_deg_s = self.droneParams["precision_max_ang_vel_deg_s"]
         
         if max_lin_vel_m_s: waypoint_msg.max_lin_vel_m_s = max_lin_vel_m_s
-        else: waypoint_msg.max_lin_vel_m_s = self.drone_params["precision_max_lin_vel_m_s"]
+        else: waypoint_msg.max_lin_vel_m_s = self.droneParams["precision_max_lin_vel_m_s"]
             
         if max_z_vel_m_s: waypoint_msg.max_z_vel_m_s = max_z_vel_m_s
-        else: waypoint_msg.max_z_vel_m_s = self.drone_params["precision_max_z_vel_m_s"]
+        else: waypoint_msg.max_z_vel_m_s = self.droneParams["precision_max_z_vel_m_s"]
             
         if max_lin_accel_m_s2: waypoint_msg.max_lin_accel_m_s2 = max_lin_accel_m_s2
-        else: waypoint_msg.max_lin_accel_m_s2 = self.drone_params["precision_max_lin_accel_m_s2"]     
+        else: waypoint_msg.max_lin_accel_m_s2 = self.droneParams["precision_max_lin_accel_m_s2"]     
     
-        self.publish_helper(self.drone_publisher, waypoint_msg)  
+        self.publish_helper(self.dronePublisher, waypoint_msg)  
     
     
     def offsetPointFLU(self, FLUpoint: Point, FLUoffset: Point) -> Point:
@@ -595,7 +595,7 @@ class TaskManagerNode(Node):
 
         # sends message
         self.sendWaypointNED(last_setpoint, last_heading)
-        self.debug(self.debug_drone, f'drone hovering @ {last_setpoint} heading {last_heading}')
+        self.debug(self.debugDrone, f'drone hovering @ {last_setpoint} heading {last_heading}')
         
 
     def isInRangeNED(self, NEDpoint: Point, toleranceXY: float, toleranceZ: float) -> bool:
@@ -610,8 +610,8 @@ class TaskManagerNode(Node):
         if last_received is None:
             return False
         
-        self.debug(self.debug_vbm,f'NED point from VBM: ({NEDpoint.x},{NEDpoint.y},{NEDpoint.z})')
-        self.debug(self.debug_drone, f'diffX, diffY, diffZ ({abs(last_received.position.x - NEDpoint.x)}, {abs(last_received.position.y - NEDpoint.y)}, {abs(last_received.position.z - NEDpoint.z)})')
+        self.debug(self.debugVBM,f'NED point from VBM: ({NEDpoint.x},{NEDpoint.y},{NEDpoint.z})')
+        self.debug(self.debugDrone, f'diffX, diffY, diffZ ({abs(last_received.position.x - NEDpoint.x)}, {abs(last_received.position.y - NEDpoint.y)}, {abs(last_received.position.z - NEDpoint.z)})')
         
         # if difference between current point and set point is greater than tolerance, false
         if abs(last_received.position.x - NEDpoint.x) > toleranceXY: return False
@@ -683,13 +683,13 @@ class TaskManagerNode(Node):
 
         # send posestamped to different topics depending wether trajectory is true or false
         if trajectory:
-            self.publish_helper(self.traj_grasp_publisher, poseStampedMsg)
+            self.publish_helper(self.trajGraspPublisher, poseStampedMsg)
         else:
-            self.publish_helper(self.grasp_publisher, poseStampedMsg)
+            self.publish_helper(self.graspPublisher, poseStampedMsg)
 
-    def set_wait(self, next_state: State, wait_time_s: float = 0.5, wait_until_fn: Callable[[None], bool] = None) -> State:
+    def set_wait(self, nextState: State, wait_time_s: float = 0.5, wait_until_fn: Callable[[None], bool] = None) -> State:
         '''
-        next_state is the desired state after wait time
+        nextState is the desired state after wait time
         wait_time_s is time IN SECONDS
         wait_time_fn is a function()->bool. Overrides wait_time if not included in function
         does not command the drone in any way, shape, or form
@@ -701,7 +701,7 @@ class TaskManagerNode(Node):
             wait_until_fn = default_wait_fn
 
         self.wait_time = wait_time_s
-        self.next_state = next_state
+        self.nextState = nextState
         self.wait_until_fn = wait_until_fn
 
         return State.WAITING
@@ -715,7 +715,7 @@ class TaskManagerNode(Node):
         does not command the drone in any way, shape, or form
         '''
         if self.wait_until_fn():
-            return self.next_state
+            return self.nextState
         return State.WAITING
     
 # ----- STARTUP
@@ -727,9 +727,9 @@ class TaskManagerNode(Node):
         '''
         
         # check if drone is flying and offboard
-        if self.is_new_data_from_subscriber(self.telemetry_subscriber):
+        if self.is_new_data_from_subscriber(self.telemetrySubscriber):
             if self.telemetry.is_flying == True and self.telemetry.is_offboard == True:
-                self.debug(self.debug_drone, "Drone is offboard and armed, switching to HOLD")
+                self.debug(self.debugDrone, "Drone is offboard and armed, switching to HOLD")
                 return State.HOLD                
         
         return State.STARTUP
@@ -744,7 +744,7 @@ class TaskManagerNode(Node):
 
         # when it is within a meter of the home position in XY only
         if self.isInRangeNED(Point(x=0, y=0, z=-10), 2.0, 10000.0):
-            self.debug(self.debug_drone, "Drone failsafe is in range of home position, switching to LANDING")    
+            self.debug(self.debugDrone, "Drone failsafe is in range of home position, switching to LANDING")    
             
             # send the setpoint to go down the current above ground altitude (+ 2 extra meters for good measure)
             # the PX4 autopilot should detect the landing, and disarm the drone automatically
@@ -764,7 +764,7 @@ class TaskManagerNode(Node):
         this is a failsafe state, so it will keep trying to land until it is on the ground
         '''
         
-        # self.sendWaypointNED(Point(x=0, y=0, z=0), 0, self.drone_params["precision_max_ang_vel_deg_s"], self.drone_params["precision_max_lin_vel_m_s"], self.drone_params["precision_max_z_vel_m_s"], self.drone_params["precision_max_lin_accel_m_s2"])                   
+        # self.sendWaypointNED(Point(x=0, y=0, z=0), 0, self.droneParams["precision_max_ang_vel_deg_s"], self.droneParams["precision_max_lin_vel_m_s"], self.droneParams["precision_max_z_vel_m_s"], self.droneParams["precision_max_lin_accel_m_s2"])                   
         
         return State.LANDING
     
@@ -783,7 +783,7 @@ class TaskManagerNode(Node):
         
         # the only time it can go back to startup is, if it is in hold and the offboard mode is deactivated
         if self.telemetry.is_offboard == False:
-            self.debug(self.debug_drone, "Drone is not in offboard, switching to STARTUP")            
+            self.debug(self.debugDrone, "Drone is not in offboard, switching to STARTUP")            
             return State.STARTUP
 
         return State.HOLD
@@ -801,12 +801,12 @@ class TaskManagerNode(Node):
         # calculate grasp
         # generate posestamped message from grasp
         # TODO if refresh rate gets to live rate, use this instead
-        # if self.is_new_data_from_subscriber(self.grasp_subscriber):
+        # if self.is_new_data_from_subscriber(self.graspSubscriber):
         #     # self.raw_grasp
         #     self.sendArmToPoint(self.raw_grasp)
 
         
-        if self.is_new_data_from_subscriber(self.extract_subscriber):
+        if self.is_new_data_from_subscriber(self.extractSubscriber):
             pt = PoseStamped()
             pt.header = self.extract_pt.header
             pt.pose.position = self.extract_pt.point
@@ -827,12 +827,12 @@ class TaskManagerNode(Node):
         rpm = 2.0    
         degrees_per_second = rpm * 360.0 / 60.0
         
-        self.debug(self.debug_drone, f'spinning, RPM: {rpm}') 
+        self.debug(self.debugDrone, f'spinning, RPM: {rpm}') 
 
         # desired heading based on elapsed time
         current_time = self.get_clock().now()
-        elapsed = (current_time - self.search_start_time).nanoseconds / 1e9
-        desired_heading = (self.search_start_heading + elapsed * degrees_per_second) % 360.0
+        elapsed = (current_time - self.searchStartTime).nanoseconds / 1e9
+        desired_heading = (self.searchStartHeading + elapsed * degrees_per_second) % 360.0
 
         # send waypoint maintaining position but rotating
         self.sendWaypointNED(
@@ -842,13 +842,13 @@ class TaskManagerNode(Node):
         )
 
         # detection found, transition states
-        if self.is_new_data_from_subscriber(self.extract_subscriber):
+        if self.is_new_data_from_subscriber(self.extractSubscriber):
 
-            self.debug(self.debug_drone, f'found object at ({self.extract_pt.point}), changing to HOLD') 
+            self.debug(self.debugDrone, f'found object at ({self.extract_pt.point}), changing to HOLD') 
 
             return self.set_wait(State.NAVIGATING, 5) # Move to grasp after 5 seconds 
         
-        self.debug(self.debug_drone, f'nothing found, continue SEARCHING') 
+        self.debug(self.debugDrone, f'nothing found, continue SEARCHING') 
 
         return State.SEARCHING
 
@@ -863,9 +863,9 @@ class TaskManagerNode(Node):
         #TODO: if object is lost for 10s + and you hover at position, go back to search
         
         # if new extracted pt, recalculate approach
-        if self.is_new_data_from_subscriber(self.extract_subscriber):
+        if self.is_new_data_from_subscriber(self.extractSubscriber):
             
-            self.debug(self.debug_vbm, f'new point extracted, recalculating approach') 
+            self.debug(self.debugVBM, f'new point extracted, recalculating approach') 
 
             # convert that 3D point to NED, offset it above and towards the drone a bit
             
@@ -878,11 +878,11 @@ class TaskManagerNode(Node):
             px4_yaw_rad = math.atan2(diff_east, diff_north) 
             heading_deg = self.px4_yaw_to_heading(px4_yaw_rad)            
             
-            self.sendWaypointNED(NED_pos, heading_deg, self.drone_params["precision_max_ang_vel_deg_s"], self.drone_params["precision_max_lin_vel_m_s"], self.drone_params["precision_max_z_vel_m_s"], self.drone_params["precision_max_lin_accel_m_s2"])    
+            self.sendWaypointNED(NED_pos, heading_deg, self.droneParams["precision_max_ang_vel_deg_s"], self.droneParams["precision_max_lin_vel_m_s"], self.droneParams["precision_max_z_vel_m_s"], self.droneParams["precision_max_lin_accel_m_s2"])    
 
             # if the new waypoint is within a certain distance of the robot, switch to grasping state
             if self.isInRangeNED(NED_pos, 0.1, 0.1):  #TODO: ROS-tunable params
-                self.debug(self.debug_vbm, f'within range of object, begin GRASPING') 
+                self.debug(self.debugVBM, f'within range of object, begin GRASPING') 
                 # return State.GRASPING
 
                 # if self.arm_status.is_stowed:
@@ -895,7 +895,7 @@ class TaskManagerNode(Node):
                 return self.set_wait(State.GRASPING, 5) # Move to grasp after 5 seconds
 
         # stay in navigation state
-        self.debug(self.debug_drone, f'out of range, continue NAVIGATING') 
+        self.debug(self.debugDrone, f'out of range, continue NAVIGATING') 
 
         return State.NAVIGATING
     
@@ -917,26 +917,26 @@ class TaskManagerNode(Node):
         
         returns True if there is error
         '''
-        if self.override_errors:
+        if self.overrideErrors:
             return False
         # Read most recent Telemetry and ArmStatus data
         # Set mode to State.HOLD if any errors
-        if self.is_new_data_from_subscriber(self.telemetry_subscriber):
+        if self.is_new_data_from_subscriber(self.telemetrySubscriber):
             
             # check that we have more than 0.4m of ground clearance beneath the drone
             if self.telemetry.altitude_above_ground < 0.4:
                 # check that we are not too low
-                self.debug(self.debug_drone, "Ground Too Close, Abort")
+                self.debug(self.debugDrone, "Ground Too Close, Abort")
                 return True          
             
             if self.telemetry.altitude_above_ground < 0.8:
                 # check that we are not too low
-                self.debug(self.debug_drone, "Ground Proximity Warning")
+                self.debug(self.debugDrone, "Ground Proximity Warning")
                 return False     
             
             # check that offboard mode has been deactivated
             if self.telemetry.is_offboard == False:            
-                self.debug(self.debug_drone, "Not in Offboard Mode")
+                self.debug(self.debugDrone, "Not in Offboard Mode")
                 return True   
                 
         return False # TODO
@@ -949,20 +949,20 @@ class TaskManagerNode(Node):
         the RC control can always switch off offboard mode and take over manually
         '''
         # If we're ignoring errors, ignore failsafe as well
-        if self.override_errors:
+        if self.overrideErrors:
             return False
         
-        if self.is_new_data_from_subscriber(self.telemetry_subscriber):
+        if self.is_new_data_from_subscriber(self.telemetrySubscriber):
             # check that we have a good RC link
             if self.telemetry.has_rc_link == False:
                 # check that we are not too low
-                self.debug(self.debug_drone, "No RC Link")
+                self.debug(self.debugDrone, "No RC Link")
                 return True        
             
             # if battery is below 10%
             if self.telemetry.battery_percentage < 10:
                 # check that we are not too low
-                self.debug(self.debug_drone, "Battery Low")
+                self.debug(self.debugDrone, "Battery Low")
                 return True
         return False
 
@@ -985,28 +985,28 @@ class TaskManagerNode(Node):
             # send a point to the drone to return to home position and 0.5m above the current flight level
             current_position = self.telemetry.pos.pose.position                
             self.sendWaypointNED(Point(x=0, y=0, z=(current_position.z - 0.5)))
-            self.has_failsafed = True
+            self.hasFailsafed = True
 
             # if not self.arm_status.is_stowed:
             #     self.stow_arm()
             
         # TODO:
         elif new_state != State.FAILSAFE and old_state == State.FAILSAFE:
-            self.has_failsafed = False
+            self.hasFailsafed = False
 
         elif new_state == State.SEARCHING and old_state != State.SEARCHING:
             # save the current position so we can spin around it
-            self.search_start_time = self.get_clock().now()
-            self.search_start_heading = self.telemetry.heading_degrees
+            self.searchStartTime = self.get_clock().now()
+            self.searchStartHeading = self.telemetry.heading_degrees
             self.saveDroneHoldPose()
-            self.debug(self.debug_drone, "Starting search pattern")
+            self.debug(self.debugDrone, "Starting search pattern")
 
 # ----- MAIN LOOP
     
     def main_loop(self):
         state_msg = String()
         state_msg.data = self.state.value
-        self.publish_helper(self.state_publisher, state_msg)
+        self.publish_helper(self.statePublisher, state_msg)
 
         new_state = self.state
         
@@ -1035,15 +1035,15 @@ class TaskManagerNode(Node):
         elif self.state == State.WAITING:
             new_state = self.wait()
             
-        if self.is_new_data_from_subscriber(self.state_setter_subscriber):
+        if self.is_new_data_from_subscriber(self.stateSetterSubscriber):
             # Use new state from message if there's an incoming state
-            self.debug(self.debug_publish,f"Updating state from received message: {self.received_state}")
-            new_state = self.received_state            
+            self.debug(self.debugPublish,f"Updating state from received message: {self.recievedState}")
+            new_state = self.recievedState            
             
         # if we are in normal operation, check for potential errors and failsafes
             # this still leaves the state machine fully running and states switchable using SSH
             # the RC control can always switch off offboard mode and take over manually
-        if self.has_failsafed == False:    
+        if self.hasFailsafed == False:    
             if self.checkForErrors():
                 self.debug(True, "ERRORS FOUND - MOVING TO HOLD STATE")
                 new_state = State.HOLD
@@ -1056,7 +1056,7 @@ class TaskManagerNode(Node):
         self.state_transitions(self.state, new_state)     
         self.state = new_state
 
-    def init_loop(self):
+    def initLoop(self):
         '''
         Times the main loop to run at 20Hz (every 0.05 seconds)
         '''
