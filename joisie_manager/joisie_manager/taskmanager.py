@@ -36,8 +36,8 @@ class State(Enum):
     GRASPING = "GRASP"
     DEPOSITING = "DEPOSIT"
     
-# launch using the ros2 launch joisie_manager all_nodes
-# ros2 topic pub -1 /joisie_set_state std_msgs/msg/String "{data: 'SEARCH'}"
+# launch using the: ros2 launch joisie_manager all_nodes manager_debug:=0b11000
+# manually set state: ros2 topic pub -1 /joisie_set_state std_msgs/msg/String "{data: 'SEARCH'}"
 
 class TaskManagerNode(Node):
 
@@ -743,14 +743,14 @@ class TaskManagerNode(Node):
         '''
 
         # when it is within a meter of the home position in XY only
-        if self.isInRangeNED(Point(x=0, y=0, z=-10), 1.0, 10000.0):
+        if self.isInRangeNED(Point(x=0, y=0, z=-10), 2.0, 10000.0):
             self.debug(self.debug_drone, "Drone failsafe is in range of home position, switching to LANDING")    
             
             # send the setpoint to go down the current above ground altitude (+ 2 extra meters for good measure)
             # the PX4 autopilot should detect the landing, and disarm the drone automatically
             current_NED_pos = self.telemetry.pos.pose.position
-            dist_in_Z_to_ground = current_NED_pos.z + self.telemetry.altitude_above_ground_m + 2
-            point_to_land = self.FLU2NED(Point(x=0, y=0, z=dist_in_Z_to_ground))
+            # e.g.: the altitude above ground is 10, so the drone should descend down (10+2) meters to land on the ground    
+            point_to_land = self.FLU2NED(Point(x=0, y=0, z=-(self.telemetry.altitude_above_ground_m + 2)))
             self.sendWaypointNED(point_to_land, 0)
             return State.LANDING
         
@@ -780,6 +780,11 @@ class TaskManagerNode(Node):
     
         # if not self.arm_status.is_stowed:
         #     self.stow_arm()
+        
+        # the only time it can go back to startup is, if it is in hold and the offboard mode is deactivated
+        if self.telemetry.is_offboard == False:
+            self.debug(self.debug_drone, "Drone is not in offboard, switching to STARTUP")            
+            return State.STARTUP
 
         return State.HOLD
 
@@ -927,7 +932,12 @@ class TaskManagerNode(Node):
             if self.telemetry.altitude_above_ground < 0.8:
                 # check that we are not too low
                 self.debug(self.debug_drone, "Ground Proximity Warning")
-                return False        
+                return False     
+            
+            # check that offboard mode has been deactivated
+            if self.telemetry.is_offboard == False:            
+                self.debug(self.debug_drone, "Not in Offboard Mode")
+                return True   
                 
         return False # TODO
     
