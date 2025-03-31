@@ -471,6 +471,7 @@ class TaskManagerNode(Node):
         heading is OPTIONAL, does not change if left out
         max_ang_vel_deg_s, max_lin_vel_m_s, max_z_vel_m_s, and max_lin_accel_m_s2 if not specified are left at precision (slow)
         """ 
+        ##TEST
         
         # send waypoint by creating a PoseStamped message
         waypoint_msg = DroneWaypoint()
@@ -484,17 +485,25 @@ class TaskManagerNode(Node):
             waypoint_msg.heading_degrees = self.telemetry.heading_degrees
 
         # Set the velocity and acceleration data
-        if max_ang_vel_deg_s: waypoint_msg.max_ang_vel_deg_s = max_ang_vel_deg_s
-        else: waypoint_msg.max_ang_vel_deg_s = self.drone_params["precision_max_ang_vel_deg_s"]
+        if max_ang_vel_deg_s: 
+            waypoint_msg.max_ang_vel_deg_s = max_ang_vel_deg_s
+        else: 
+            waypoint_msg.max_ang_vel_deg_s = self.drone_params["precision_max_ang_vel_deg_s"]
         
-        if max_lin_vel_m_s: waypoint_msg.max_lin_vel_m_s = max_lin_vel_m_s
-        else: waypoint_msg.max_lin_vel_m_s = self.drone_params["precision_max_lin_vel_m_s"]
+        if max_lin_vel_m_s: 
+            waypoint_msg.max_lin_vel_m_s = max_lin_vel_m_s
+        else: 
+            waypoint_msg.max_lin_vel_m_s = self.drone_params["precision_max_lin_vel_m_s"]
             
-        if max_z_vel_m_s: waypoint_msg.max_z_vel_m_s = max_z_vel_m_s
-        else: waypoint_msg.max_z_vel_m_s = self.drone_params["precision_max_z_vel_m_s"]
+        if max_z_vel_m_s: 
+            waypoint_msg.max_z_vel_m_s = max_z_vel_m_s
+        else: 
+            waypoint_msg.max_z_vel_m_s = self.drone_params["precision_max_z_vel_m_s"]
             
-        if max_lin_accel_m_s2: waypoint_msg.max_lin_accel_m_s2 = max_lin_accel_m_s2
-        else: waypoint_msg.max_lin_accel_m_s2 = self.drone_params["precision_max_lin_accel_m_s2"]     
+        if max_lin_accel_m_s2: 
+            waypoint_msg.max_lin_accel_m_s2 = max_lin_accel_m_s2
+        else: 
+            waypoint_msg.max_lin_accel_m_s2 = self.drone_params["precision_max_lin_accel_m_s2"]     
     
         self.publish_helper(self.drone_publisher, waypoint_msg)  
     
@@ -507,6 +516,8 @@ class TaskManagerNode(Node):
         FLUoffset = to offset the point in the local FLU drone frame in F, L, U
         returns a Point              
         """
+        ##TEST
+
         
         return Point(x=FLUpoint.x + FLUoffset.x, y=FLUpoint.y + FLUoffset.y, z=FLUpoint.z + FLUoffset.z)
 
@@ -516,6 +527,7 @@ class TaskManagerNode(Node):
         yaw is Heading in DEGREES 0 to 360
         Returns the offset as a Point in NED
         """
+        ##TEST
 
         # if no heading is given, keep current heading
         if heading_deg is None:
@@ -544,6 +556,7 @@ class TaskManagerNode(Node):
         Accepts a ROS2 timestamp, if specified grabs the quaternion at that point in time to counteract the camera processing delay
         Apply the current drone NED rotation quaternion to figure out the new point XYZ in the NED frame
         """
+        ##TEST
 
         # https://danceswithcode.net/engineeringnotes/quaternions/quaternions.html
         def multiply_quaternion(q1: np.array, q2: np.array) -> np.array:
@@ -603,6 +616,7 @@ class TaskManagerNode(Node):
         Returns true if drone's location is at given NEDpoint plus or minus given tolerance
         Otherwise returns false
         """
+        ##TEST
 
         last_received = self.telemetry.pos.pose
 
@@ -634,6 +648,7 @@ class TaskManagerNode(Node):
         Note: 
             This feature only makes sense when referring to a unit quaternion. Calling this method will implicitly normalise the Quaternion object to a unit quaternion if it is not already one.
         """
+        ##TEST
         
         qw = quat.w
         qx = quat.x
@@ -919,10 +934,15 @@ class TaskManagerNode(Node):
         '''
         if self.override_errors:
             return False
+        
         # Read most recent Telemetry and ArmStatus data
         # Set mode to State.HOLD if any errors
         if self.is_new_data_from_subscriber(self.telemetry_subscriber):
             
+            # check that offboard mode has been deactivated
+            if self.telemetry.is_offboard == False:            
+                self.debug(self.debug_drone, "Not in Offboard Mode")
+                return True   
             # check that we have more than 0.4m of ground clearance beneath the drone
             if self.telemetry.altitude_above_ground < 0.4:
                 # check that we are not too low
@@ -934,10 +954,6 @@ class TaskManagerNode(Node):
                 self.debug(self.debug_drone, "Ground Proximity Warning")
                 return False     
             
-            # check that offboard mode has been deactivated
-            if self.telemetry.is_offboard == False:            
-                self.debug(self.debug_drone, "Not in Offboard Mode")
-                return True   
                 
         return False # TODO
     
@@ -948,6 +964,8 @@ class TaskManagerNode(Node):
         
         the RC control can always switch off offboard mode and take over manually
         '''
+        ##TEST
+
         # If we're ignoring errors, ignore failsafe as well
         if self.override_errors:
             return False
