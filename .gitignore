@@ -11,3 +11,11 @@ build/*/*
 build/*/*/*
 
 .vscode/*
+
+joisie_manager/__pycache__/*
+joisie_manager/.pytest_cache/*
+joisie_manager/.pytest_cache/*/*
+joisie_manager/.pytest_cache/*/*/*
+joisie_manager/joisie_manager/__pycache__/*
+joisie_manager/launch/__pycache__/*
+joisie_manager/test/__pycache__/*
