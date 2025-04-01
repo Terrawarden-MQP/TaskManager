@@ -17,12 +17,12 @@ from collections import deque
 import math
 from enum import Enum, auto
 import time
-
-from joisie_manager.taskmanager import *
+import pytest
+from ..joisie_manager.taskmanager import *
 
 
 # HELPERS FOR INSTANTIATING TASK MANAGER AND MOCKING TELEMETRY
-from test_helpers import *
+from .test_helpers import *
 
 
 # Function name starts with "test_"

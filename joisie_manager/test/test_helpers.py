@@ -17,8 +17,8 @@ from collections import deque
 import math
 from enum import Enum, auto
 import time
-
-from joisie_manager.taskmanager import *
+import pytest
+from ..joisie_manager.taskmanager import *
 
 def get_publisher(task_manager: TaskManagerNode, message_type, ros_param_name: str):
     return task_manager.create_publisher(message_type,
