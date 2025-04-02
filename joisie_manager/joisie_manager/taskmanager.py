@@ -100,7 +100,7 @@ class TaskManagerNode(Node):
         self.declareParameter('traj_arm_grasp_topic', 'joisie_grasp_send')
 
         # CustomArmMsg from Arm Node
-        self.declareParameter('arm_status_topic', 'joisie_arm_status')
+        self.declareParameter('armStatus_topic', 'joisie_armStatus')
 
         # Topic for InRangeOfObj Service Call to Arm Node
         self.declareParameter('arm_service_topic', 'joisie_arm_inrange_service')
@@ -142,9 +142,9 @@ class TaskManagerNode(Node):
         self._telemetry = DroneTelemetry()
         self.telemetry_queue = deque()
         self._detection = Detection2D()
-        self._extract_pt = PointStamped()
-        self._raw_grasp = PoseStamped()
-        # self._arm_status = DynaArmStatus()    
+        self._extractPoint = PointStamped()
+        self._rawGrasp = PoseStamped()
+        # self._armStatus = DynaArmStatus()    
 
         # STORE PREVIOUS MESSAGE SENT PER TOPIC
         self.lastSentMessage = {}
@@ -167,7 +167,7 @@ class TaskManagerNode(Node):
 
         # waiting, stowing, unstowing state variables
         self.nextState = State.HOLD
-        self._wait_time = 0
+        self._waitTime = 0
         self._wait_start_time = 0
 
         # There's no need for an on_shutdown method here
@@ -191,15 +191,15 @@ class TaskManagerNode(Node):
         
         self.extractSubscriber = self.create_subscription(PointStamped,
                                                     self.get_parameter('vbm_extract_topic').value,
-                                                    self.getSetter("extract_pt"), 10)
+                                                    self.getSetter("extractPoint"), 10)
         
         self.graspSubscriber = self.create_subscription(PoseStamped,
                                                     self.get_parameter('vbm_grasp_topic').value, 
-                                                    self.getSetter("raw_grasp"), 10)
+                                                    self.getSetter("rawGrasp"), 10)
 
         self.armStatusSubscriber = self.create_subscription(ArmStatus, 
-                                                    self.get_parameter('arm_status_topic').value, 
-                                                    self.getSetter("arm_status"), 10)
+                                                    self.get_parameter('armStatus_topic').value, 
+                                                    self.getSetter("armStatus"), 10)
 
     ### STOW ARM SERVICE CLIENT
 
@@ -311,45 +311,45 @@ class TaskManagerNode(Node):
                 break
 
     @property
-    def raw_grasp(self) -> PoseStamped:
+    def rawGrasp(self) -> PoseStamped:
         self.received_new[self.graspSubscriber.topic] = False
-        return self._raw_grasp
+        return self._rawGrasp
 
-    @raw_grasp.setter
-    def raw_grasp(self, ros_msg: PoseStamped) -> None:
+    @rawGrasp.setter
+    def rawGrasp(self, ros_msg: PoseStamped) -> None:
         self.received_new[self.graspSubscriber.topic] = True
-        self._raw_grasp = ros_msg
+        self._rawGrasp = ros_msg
 
 
     @property
-    def extract_pt(self) -> PointStamped:
+    def extractPoint(self) -> PointStamped:
         self.received_new[self.extractSubscriber.topic] = False
-        return self._extract_pt
+        return self._extractPoint
     
-    @extract_pt.setter
-    def extract_pt(self, ros_msg: PointStamped) -> None:
+    @extractPoint.setter
+    def extractPoint(self, ros_msg: PointStamped) -> None:
         self.received_new[self.extractSubscriber.topic] = True
-        self._extract_pt = ros_msg
+        self._extractPoint = ros_msg
 
 
     @property
-    def wait_time(self) -> float:
-        return self._wait_time
+    def waitTime(self) -> float:
+        return self._waitTime
     
-    @wait_time.setter
-    def wait_time(self, val: float) -> None:
+    @waitTime.setter
+    def waitTime(self, val: float) -> None:
         self._wait_start_time = time.time()
-        self._wait_time = val
+        self._waitTime = val
 
     @property
-    def arm_status(self) -> ArmStatus:
+    def armStatus(self) -> ArmStatus:
         self.received_new[self.armStatusSubscriber.topic] = False
-        return self._arm_status
+        return self._armStatus
     
-    @arm_status.setter
-    def arm_status(self, ros_msg: ArmStatus):
+    @armStatus.setter
+    def armStatus(self, ros_msg: ArmStatus):
         self.received_new[self.armStatusSubscriber.topic] = True
-        self._arm_status = ros_msg
+        self._armStatus = ros_msg
 
 # ----- HELPER FNs
 
@@ -687,20 +687,20 @@ class TaskManagerNode(Node):
         else:
             self.publish_helper(self.graspPublisher, poseStampedMsg)
 
-    def set_wait(self, nextState: State, wait_time_s: float = 0.5, wait_until_fn: Callable[[None], bool] = None) -> State:
+    def set_wait(self, nextState: State, waitTime_s: float = 0.5, wait_until_fn: Callable[[None], bool] = None) -> State:
         '''
         nextState is the desired state after wait time
-        wait_time_s is time IN SECONDS
-        wait_time_fn is a function()->bool. Overrides wait_time if not included in function
+        waitTime_s is time IN SECONDS
+        waitTime_fn is a function()->bool. Overrides waitTime if not included in function
         does not command the drone in any way, shape, or form
         '''
         # Default is time-based
         def default_wait_fn():
-            return time.time() > self._wait_start_time + self.wait_time
+            return time.time() > self._wait_start_time + self.waitTime
         if wait_until_fn is None:
             wait_until_fn = default_wait_fn
 
-        self.wait_time = wait_time_s
+        self.waitTime = waitTime_s
         self.nextState = nextState
         self.wait_until_fn = wait_until_fn
 
@@ -778,7 +778,7 @@ class TaskManagerNode(Node):
         # listening for desired state happens async from this'
 
     
-        # if not self.arm_status.is_stowed:
+        # if not self.armStatus.is_stowed:
         #     self.stow_arm()
         
         # the only time it can go back to startup is, if it is in hold and the offboard mode is deactivated
@@ -802,14 +802,14 @@ class TaskManagerNode(Node):
         # generate posestamped message from grasp
         # TODO if refresh rate gets to live rate, use this instead
         # if self.is_new_data_from_subscriber(self.graspSubscriber):
-        #     # self.raw_grasp
-        #     self.sendArmToPoint(self.raw_grasp)
+        #     # self.rawGrasp
+        #     self.sendArmToPoint(self.rawGrasp)
 
         
         if self.is_new_data_from_subscriber(self.extractSubscriber):
             pt = PoseStamped()
-            pt.header = self.extract_pt.header
-            pt.pose.position = self.extract_pt.point
+            pt.header = self.extractPoint.header
+            pt.pose.position = self.extractPoint.point
             self.sendArmToPoint(pt)
         
         return State.GRASPING # TODO - what state makes sense to move into?
@@ -844,7 +844,7 @@ class TaskManagerNode(Node):
         # detection found, transition states
         if self.is_new_data_from_subscriber(self.extractSubscriber):
 
-            self.debug(self.debugDrone, f'found object at ({self.extract_pt.point}), changing to HOLD') 
+            self.debug(self.debugDrone, f'found object at ({self.extractPoint.point}), changing to HOLD') 
 
             return self.set_wait(State.NAVIGATING, 5) # Move to grasp after 5 seconds 
         
@@ -869,8 +869,8 @@ class TaskManagerNode(Node):
 
             # convert that 3D point to NED, offset it above and towards the drone a bit
             
-            FLU_pos = self.offsetPointFLU(self.extract_pt.point, Point(x=-0.707, y=0., z=0.707))
-            NED_pos = self.FLU2NED_quaternion(FLU_pos, self.extract_pt.header.stamp) 
+            FLU_pos = self.offsetPointFLU(self.extractPoint.point, Point(x=-0.707, y=0., z=0.707))
+            NED_pos = self.FLU2NED_quaternion(FLU_pos, self.extractPoint.header.stamp) 
                     
             # calculate heading needed to turn towards point
             diff_north = NED_pos.x - self.telemetry.pos.pose.position.x
@@ -885,11 +885,11 @@ class TaskManagerNode(Node):
                 self.debug(self.debugVBM, f'within range of object, begin GRASPING') 
                 # return State.GRASPING
 
-                # if self.arm_status.is_stowed:
+                # if self.armStatus.is_stowed:
                 #     self.unstow_arm()
 
                 def check_arm_position_unstowed():
-                    return self.arm_status.at_setpoint and not self.arm_status.is_stowed
+                    return self.armStatus.at_setpoint and not self.armStatus.is_stowed
 
                 # return self.set_wait(State.GRASPING, check_arm_position_unstowed) # Move to grasp state when unstowed
                 return self.set_wait(State.GRASPING, 5) # Move to grasp after 5 seconds
@@ -968,33 +968,33 @@ class TaskManagerNode(Node):
 
 # --- STATE MACHINE
 
-    def state_transitions(self, old_state, new_state):
+    def state_transitions(self, old_state, newState):
             
         # just entering the HOLD for the first time
-        if new_state == State.HOLD and old_state != State.HOLD:
+        if newState == State.HOLD and old_state != State.HOLD:
             # save the POSE from telemetry to hold at
             self.saveDroneHoldPose()
-            # if not self.arm_status.is_stowed:
+            # if not self.armStatus.is_stowed:
             #     self.stow_arm()
 
-        if new_state == State.GRASPING and old_state != State.GRASPING:
+        if newState == State.GRASPING and old_state != State.GRASPING:
             self.saveDroneHoldPose()
 
-        elif new_state == State.FAILSAFE and old_state != State.FAILSAFE:
+        elif newState == State.FAILSAFE and old_state != State.FAILSAFE:
 
             # send a point to the drone to return to home position and 0.5m above the current flight level
             current_position = self.telemetry.pos.pose.position                
             self.sendWaypointNED(Point(x=0, y=0, z=(current_position.z - 0.5)))
             self.hasFailsafed = True
 
-            # if not self.arm_status.is_stowed:
+            # if not self.armStatus.is_stowed:
             #     self.stow_arm()
             
         # TODO:
-        elif new_state != State.FAILSAFE and old_state == State.FAILSAFE:
+        elif newState != State.FAILSAFE and old_state == State.FAILSAFE:
             self.hasFailsafed = False
 
-        elif new_state == State.SEARCHING and old_state != State.SEARCHING:
+        elif newState == State.SEARCHING and old_state != State.SEARCHING:
             # save the current position so we can spin around it
             self.searchStartTime = self.get_clock().now()
             self.searchStartHeading = self.telemetry.heading_degrees
@@ -1004,41 +1004,41 @@ class TaskManagerNode(Node):
 # ----- MAIN LOOP
     
     def main_loop(self):
-        state_msg = String()
-        state_msg.data = self.state.value
-        self.publish_helper(self.statePublisher, state_msg)
+        stateMsg = String()
+        stateMsg.data = self.state.value
+        self.publish_helper(self.statePublisher, stateMsg)
 
-        new_state = self.state
+        newState = self.state
         
         # match self.state:
         #     case State.STARTUP:
-        #         new_state = self.startup()
+        #         newState = self.startup()
 
         #     etc.
 
         if self.state == State.STARTUP:
-            new_state = self.startup()    
+            newState = self.startup()    
         elif self.state == State.FAILSAFE:
-            new_state = self.failsafe()
+            newState = self.failsafe()
         elif self.state == State.LANDING:
-            new_state = self.land()
+            newState = self.land()
         elif self.state == State.HOLD:
-            new_state = self.hold()
+            newState = self.hold()
         elif self.state == State.SEARCHING:
-            new_state = self.search()
+            newState = self.search()
         elif self.state == State.NAVIGATING:
-            new_state = self.navigate()
+            newState = self.navigate()
         elif self.state == State.GRASPING:
-            new_state = self.grasp()    
+            newState = self.grasp()    
         elif self.state == State.DEPOSITING:
-            new_state = self.deposit()
+            newState = self.deposit()
         elif self.state == State.WAITING:
-            new_state = self.wait()
+            newState = self.wait()
             
         if self.is_new_data_from_subscriber(self.stateSetterSubscriber):
             # Use new state from message if there's an incoming state
             self.debug(self.debugPublish,f"Updating state from received message: {self.recievedState}")
-            new_state = self.recievedState            
+            newState = self.recievedState            
             
         # if we are in normal operation, check for potential errors and failsafes
             # this still leaves the state machine fully running and states switchable using SSH
@@ -1046,15 +1046,15 @@ class TaskManagerNode(Node):
         if self.hasFailsafed == False:    
             if self.checkForErrors():
                 self.debug(True, "ERRORS FOUND - MOVING TO HOLD STATE")
-                new_state = State.HOLD
+                newState = State.HOLD
                 
             if self.checkFailSafe():
                 self.debug(True, "FAILSAFE TRIGGERED - MOVING TO FAILSAFE STATE")     
-                new_state = State.FAILSAFE
+                newState = State.FAILSAFE
         
         # any state transition behavior and set state
-        self.state_transitions(self.state, new_state)     
-        self.state = new_state
+        self.state_transitions(self.state, newState)     
+        self.state = newState
 
     def initLoop(self):
         '''
@@ -1067,12 +1067,12 @@ class TaskManagerNode(Node):
 def main(args=None):
     rclpy.init(args=args)
 
-    manager_node = TaskManagerNode()
+    managerNode = TaskManagerNode()
     
     # # Now actually allow ROS to process callbacks
-    rclpy.spin(manager_node)
+    rclpy.spin(managerNode)
 
-    manager_node.destroy_node()
+    managerNode.destroy_node()
     rclpy.shutdown()
 
 if __name__ == "__main__":
