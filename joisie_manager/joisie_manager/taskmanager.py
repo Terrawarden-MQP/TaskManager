@@ -811,6 +811,7 @@ class TaskManagerNode(Node):
         no inputs, outputs State
         '''
 
+        #TODO: possibly move drone closer, within arm's reach? or maybe do that beforehand in navigate
         self.droneHover()
         
         # calculate grasp
@@ -826,8 +827,18 @@ class TaskManagerNode(Node):
             pt.header = self.extract_pt.header
             pt.pose.position = self.extract_pt.point
             self.sendArmToPoint(pt)
+            
+            #TODO: check that arm got a grasp and we can move to a new state
+            # if ARM_GOT_OBJECT:
+            #     self.debug(self.debug_arm, f'grasp successful, moving to next state')
+            #     return State.DEPOSIT  
+            # else: keep trying to grasp for a limited time
+            # TODO: add timeout for grasping, if it fails after 5 attempts or so, return to search
+            #   self.debug(self.debug_arm, f'grasp failed, retrying grasp')
+            #   # TODO: command the drone to go to a position couple meters above 
+            #   return self.set_wait(State.SEARCHING, 5)
         
-        return State.GRASPING # TODO - what state makes sense to move into?
+        return State.GRASPING 
 
 # ----- SEARCH
 
@@ -856,10 +867,28 @@ class TaskManagerNode(Node):
             max_ang_vel_deg_s=degrees_per_second * 1.2  # 20% for smoothness
         )
 
-        # detection found, transition states
+        # detection found, transition states and rotate towards the detected object
         if self.is_new_data_from_subscriber(self.extract_subscriber):
 
-            self.debug(self.debug_drone, f'found object at ({self.extract_pt.point}), changing to HOLD') 
+            self.debug(self.debug_drone, f'found object at ({self.extract_pt.point}), changing to NAVIGATING') 
+                    
+## commented out to decrease testing complexity, --JJ 02/04/2025
+            # self.debug(self.debug_drone, "using hover to time turn towards detected object in place") 
+            # # convert that 3D point to NED, offset it above and towards the drone a bit
+            # FLU_pos = self.offsetPointFLU(self.extract_pt.point, Point(x=-0.707, y=0., z=0.707))
+            # NED_pos = self.FLU2NED_quaternion(FLU_pos, self.extract_pt.header.stamp) 
+                    
+            # # calculate heading needed to turn towards point
+            # diff_north = NED_pos.x - self.telemetry.pos.pose.position.x
+            # diff_east = NED_pos.y - self.telemetry.pos.pose.position.y
+            # px4_yaw_rad = math.atan2(diff_east, diff_north) 
+            # heading_deg = self.px4_yaw_to_heading(px4_yaw_rad)            
+            
+            # self.sendWaypointNED(
+            #     self.retrieveDroneHoldPose()[0],  # NED position
+            #     heading=heading_deg,
+            #     max_ang_vel_deg_s=degrees_per_second * 0.5,  # Slow down for the final preparation to the detected object
+            # )
 
             return self.set_wait(State.NAVIGATING, 5) # Move to grasp after 5 seconds 
         
@@ -875,15 +904,14 @@ class TaskManagerNode(Node):
         No inputs, output State
         """
         
-        #TODO: if object is lost for 10s + and you hover at position, go back to search
+        #TODO: if object is lost for 5s+ and you hover at position, go back to search
         
         # if new extracted pt, recalculate approach
         if self.is_new_data_from_subscriber(self.extract_subscriber):
             
-            self.debug(self.debug_vbm, f'new point extracted, recalculating approach') 
+            self.debug(self.debug_vbm, f'new point extracted at ({self.extract_pt.point}), recalculating approach coordinate') 
 
-            # convert that 3D point to NED, offset it above and towards the drone a bit
-            
+            # convert that 3D point to NED, offset it above and towards the drone a bit        
             FLU_pos = self.offsetPointFLU(self.extract_pt.point, Point(x=-0.707, y=0., z=0.707))
             NED_pos = self.FLU2NED_quaternion(FLU_pos, self.extract_pt.header.stamp) 
                     
@@ -896,9 +924,10 @@ class TaskManagerNode(Node):
             self.sendWaypointNED(NED_pos, heading_deg, self.drone_params["precision_max_ang_vel_deg_s"], self.drone_params["precision_max_lin_vel_m_s"], self.drone_params["precision_max_z_vel_m_s"], self.drone_params["precision_max_lin_accel_m_s2"])    
 
             # if the new waypoint is within a certain distance of the robot, switch to grasping state
-            if self.isInRangeNED(NED_pos, 0.1, 0.1):  #TODO: ROS-tunable params
-                self.debug(self.debug_vbm, f'within range of object, begin GRASPING') 
-                # return State.GRASPING
+            
+            #TODO: make these ROS-tunable parameters
+            if self.isInRangeNED(NED_pos, 0.1, 0.1):  
+                self.debug(self.debug_vbm, f'within range of object, changing to GRASPING') 
 
                 # if self.arm_status.is_stowed:
                 #     self.unstow_arm()
@@ -919,9 +948,11 @@ class TaskManagerNode(Node):
         deposit state function
         no inputs, returns a State
         '''
-        # drops the object
-        #  pass this for now
-        return State.DEPOSITING # TODO
+        # TODO: drop off the object
+        
+        # if at dropoff, open the gripper and return to search or land depending on the battery status
+                
+        return State.DEPOSITING
     
 # --- ERROR CHECKING AND FAILSAFES
 
@@ -1008,7 +1039,7 @@ class TaskManagerNode(Node):
             # if not self.arm_status.is_stowed:
             #     self.stow_arm()
             
-        # TODO:
+        # TODO: verify integrity of this logic, it may need to be adjusted for the failsafe state
         elif new_state != State.FAILSAFE and old_state == State.FAILSAFE:
             self.has_failsafed = False
 
@@ -1018,6 +1049,20 @@ class TaskManagerNode(Node):
             self.search_start_heading = self.telemetry.heading_degrees
             self.saveDroneHoldPose()
             self.debug(self.debug_drone, "Starting search pattern")
+            
+        elif new_state == State.DEPOSITING and old_state != State.DEPOSITING:
+            """
+            When entering depositing state, we should save the current drone position as the hold point
+            for the depositing operation.
+            """
+            self.saveDroneHoldPose()  
+              
+            # move the drone up 1m from where it is
+            pos_NED = self.retrieveDroneHoldPose()[0]
+            pos_NED.z -= 1.0 # move up 1m for depositing
+            self.sendWaypointNED(pos_NED)
+            
+            
 
 # ----- MAIN LOOP
     
