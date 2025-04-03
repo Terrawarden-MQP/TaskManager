@@ -25,16 +25,14 @@ import time
 
 class State(Enum):
     STARTUP = "STARTUP"
-    FAILSAFE = "FAILSAFE"
-    LANDING = "LAND"
-
-    WAITING = "WAIT"
     HOLD = "HOLD"
-
     SEARCHING = "SEARCH"
     NAVIGATING = "NAV"
     GRASPING = "GRASP"
     DEPOSITING = "DEPOSIT"
+    WAITING = "WAIT"
+    FAILSAFE = "FAILSAFE"
+    LANDING = "LAND"
     
 # launch using the: ros2 launch joisie_manager all_nodes manager_debug:=0b11000
 # manually set state: ros2 topic pub -1 /joisie_set_state std_msgs/msg/String "{data: 'SEARCH'}"
@@ -234,7 +232,7 @@ class TaskManagerNode(Node):
         self.init_loop()
 
 
-# ----- PROPERTIES
+# ----------- PROPERTIES
     
     #### SET UP INCOMING MESSAGES AS PROPERTIES SO WE CAN KEEP TRACK OF WHAT
     #### NEW INFORMATION HAS / HASN'T BEEN ACCESSED
@@ -721,20 +719,8 @@ class TaskManagerNode(Node):
 
         return State.WAITING
     
-# ----- STATE FUNCTIONS (not helpers!)
-
-    def wait(self) -> State:
-        '''
-        this loops when wait is current state
-        no inputs, outputs State
-        does not command the drone in any way, shape, or form
-        '''
-        if self.wait_until_fn():
-            return self.next_state
-        return State.WAITING
-    
+# ----------- STATE FUNCTIONS (not helpers!)
 # ----- STARTUP
-
     def startup(self) -> State:
         '''
         this loops when startup is current state
@@ -748,41 +734,9 @@ class TaskManagerNode(Node):
                 return State.HOLD                
         
         return State.STARTUP
+     
     
-# ----- FAILSAFE
-
-    def failsafe(self) -> State:
-        '''
-        upon entering this state keep slowly returning to home armed position and land
-        used only in case the RC link has been lost to prevent runaway of the system
-        '''
-
-        # when it is within a meter of the home position in XY only
-        if self.isInRangeNED(Point(x=0, y=0, z=-10), 2.0, 10000.0):
-            self.debug(self.debug_drone, "Drone failsafe is in range of home position, switching to LANDING")    
-            
-            # send the setpoint to go down the current above ground altitude (+ 2 extra meters for good measure)
-            # the PX4 autopilot should detect the landing, and disarm the drone automatically
-            current_NED_pos = self.telemetry.pos.pose.position
-            # e.g.: the altitude above ground is 10, so the drone should descend down (10+2) meters to land on the ground    
-            point_to_land = self.FLU2NED(Point(x=0, y=0, z=-(self.telemetry.altitude_above_ground_m + 2)))
-            self.sendWaypointNED(point_to_land, 0)
-            return State.LANDING
-        
-        return State.FAILSAFE
-    
-# ----- LANDING
-
-    def land(self) -> State:
-        '''
-        land the drone by issuing a PX4 command to land
-        this is a failsafe state, so it will keep trying to land until it is on the ground
-        '''
-        
-        # self.sendWaypointNED(Point(x=0, y=0, z=0), 0, self.drone_params["precision_max_ang_vel_deg_s"], self.drone_params["precision_max_lin_vel_m_s"], self.drone_params["precision_max_z_vel_m_s"], self.drone_params["precision_max_lin_accel_m_s2"])                   
-        
-        return State.LANDING
-    
+# ----- HOLD
     def hold(self) -> State:  
         '''
         this loops when hold is current state
@@ -803,45 +757,8 @@ class TaskManagerNode(Node):
 
         return State.HOLD
 
-# ----- GRASP
-
-    def grasp(self) -> State:
-        '''
-        this loops when grasp is current state
-        no inputs, outputs State
-        '''
-
-        #TODO: possibly move drone closer, within arm's reach? or maybe do that beforehand in navigate
-        self.droneHover()
-        
-        # calculate grasp
-        # generate posestamped message from grasp
-        # TODO if refresh rate gets to live rate, use this instead
-        # if self.is_new_data_from_subscriber(self.grasp_subscriber):
-        #     # self.raw_grasp
-        #     self.sendArmToPoint(self.raw_grasp)
-
-        
-        if self.is_new_data_from_subscriber(self.extract_subscriber):
-            pt = PoseStamped()
-            pt.header = self.extract_pt.header
-            pt.pose.position = self.extract_pt.point
-            self.sendArmToPoint(pt)
-            
-            #TODO: check that arm got a grasp and we can move to a new state
-            # if ARM_GOT_OBJECT:
-            #     self.debug(self.debug_arm, f'grasp successful, moving to next state')
-            #     return State.DEPOSIT  
-            # else: keep trying to grasp for a limited time
-            # TODO: add timeout for grasping, if it fails after 5 attempts or so, return to search
-            #   self.debug(self.debug_arm, f'grasp failed, retrying grasp')
-            #   # TODO: command the drone to go to a position couple meters above 
-            #   return self.set_wait(State.SEARCHING, 5)
-        
-        return State.GRASPING 
 
 # ----- SEARCH
-
     def search(self) -> State:
         """
         Move drone to next position in search pattern
@@ -897,7 +814,6 @@ class TaskManagerNode(Node):
         return State.SEARCHING
 
 # ----- NAVIGATE
-
     def navigate(self) -> State:
         """ 
         Perform approach sequence
@@ -943,6 +859,43 @@ class TaskManagerNode(Node):
 
         return State.NAVIGATING
     
+# ----- GRASP
+    def grasp(self) -> State:
+        '''
+        this loops when grasp is current state
+        no inputs, outputs State
+        '''
+
+        #TODO: possibly move drone closer, within arm's reach? or maybe do that beforehand in navigate
+        self.droneHover()
+        
+        # calculate grasp
+        # generate posestamped message from grasp
+        # TODO if refresh rate gets to live rate, use this instead
+        # if self.is_new_data_from_subscriber(self.grasp_subscriber):
+        #     # self.raw_grasp
+        #     self.sendArmToPoint(self.raw_grasp)
+
+        
+        if self.is_new_data_from_subscriber(self.extract_subscriber):
+            pt = PoseStamped()
+            pt.header = self.extract_pt.header
+            pt.pose.position = self.extract_pt.point
+            self.sendArmToPoint(pt)
+            
+            #TODO: check that arm got a grasp and we can move to a new state
+            # if ARM_GOT_OBJECT:
+            #     self.debug(self.debug_arm, f'grasp successful, moving to next state')
+            #     return State.DEPOSIT  
+            # else: keep trying to grasp for a limited time
+            # TODO: add timeout for grasping, if it fails after 5 attempts or so, return to search
+            #   self.debug(self.debug_arm, f'grasp failed, retrying grasp')
+            #   # TODO: command the drone to go to a position couple meters above 
+            #   return self.set_wait(State.SEARCHING, 5)
+        
+        return State.GRASPING 
+
+# ----- DEPOSIT
     def deposit(self) -> State:
         '''
         deposit state function
@@ -954,6 +907,53 @@ class TaskManagerNode(Node):
                 
         return State.DEPOSITING
     
+# ----- WAIT
+    def wait(self) -> State:
+        '''
+        this loops when wait is current state
+        no inputs, outputs State
+        does not command the drone in any way, shape, or form
+        '''
+        if self.wait_until_fn():
+            return self.next_state
+        return State.WAITING
+
+
+# ----- FAILSAFE
+    def failsafe(self) -> State:
+        '''
+        upon entering this state keep slowly returning to home armed position and land
+        used only in case the RC link has been lost to prevent runaway of the system
+        '''
+
+        # when it is within a meter of the home position in XY only
+        if self.isInRangeNED(Point(x=0, y=0, z=-10), 2.0, 10000.0):
+            self.debug(self.debug_drone, "Drone failsafe is in range of home position, switching to LANDING")    
+            
+            # send the setpoint to go down the current above ground altitude (+ 2 extra meters for good measure)
+            # the PX4 autopilot should detect the landing, and disarm the drone automatically
+            current_NED_pos = self.telemetry.pos.pose.position
+            # e.g.: the altitude above ground is 10, so the drone should descend down (10+2) meters to land on the ground    
+            point_to_land = self.FLU2NED(Point(x=0, y=0, z=-(self.telemetry.altitude_above_ground_m + 2)))
+            self.sendWaypointNED(point_to_land, 0)
+            return State.LANDING
+        
+        return State.FAILSAFE
+    
+    
+# ----- LANDING
+    def land(self) -> State:
+        '''
+        land the drone by issuing a PX4 command to land
+        this is a failsafe state, so it will keep trying to land until it is on the ground
+        '''
+        
+        # self.sendWaypointNED(Point(x=0, y=0, z=0), 0, self.drone_params["precision_max_ang_vel_deg_s"], self.drone_params["precision_max_lin_vel_m_s"], self.drone_params["precision_max_z_vel_m_s"], self.drone_params["precision_max_lin_accel_m_s2"])                   
+        
+        return State.LANDING
+   
+    
+# -----------
 # --- ERROR CHECKING AND FAILSAFES
 
     def checkForErrors(self) -> bool:
@@ -1015,7 +1015,7 @@ class TaskManagerNode(Node):
                 return True
         return False
 
-# --- STATE MACHINE
+# --- STATE MACHINE TRANSITION LOGIC
 
     def state_transitions(self, old_state, new_state):
             
@@ -1064,7 +1064,7 @@ class TaskManagerNode(Node):
             
             
 
-# ----- MAIN LOOP
+# ----------- MAIN LOOP
     
     def main_loop(self):
         state_msg = String()
@@ -1081,10 +1081,6 @@ class TaskManagerNode(Node):
 
         if self.state == State.STARTUP:
             new_state = self.startup()    
-        elif self.state == State.FAILSAFE:
-            new_state = self.failsafe()
-        elif self.state == State.LANDING:
-            new_state = self.land()
         elif self.state == State.HOLD:
             new_state = self.hold()
         elif self.state == State.SEARCHING:
@@ -1097,6 +1093,10 @@ class TaskManagerNode(Node):
             new_state = self.deposit()
         elif self.state == State.WAITING:
             new_state = self.wait()
+        elif self.state == State.FAILSAFE:
+            new_state = self.failsafe()
+        elif self.state == State.LANDING:
+            new_state = self.land()
             
         if self.is_new_data_from_subscriber(self.state_setter_subscriber):
             # Use new state from message if there's an incoming state
