@@ -1,3 +1,4 @@
+from __future__ import annotations
 # Imports stolen from task manager
 import rclpy
 from rclpy.node import Node
@@ -17,10 +18,10 @@ from collections import deque
 import math
 from enum import Enum, auto
 import time
+import pytest
+from ..joisie_manager.taskmanager import *
 
-from joisie_manager.taskmanager import *
-
-def get_publisher(task_manager: TaskManagerNode, message_type, ros_param_name: str):
+def get_publisher(task_manager: TaskManagerNode, message_type: type, ros_param_name: str):
     return task_manager.create_publisher(message_type,
         task_manager.get_parameter(ros_param_name).value, 10)
 
@@ -59,3 +60,19 @@ def mock_telemetry(pos: tuple[float, float, float] = (0,0,0),
                           is_flying=is_flying,
                           is_offboard=is_offboard,
                           has_rc_link=has_rc_link)
+
+def timeout_condition(timeout_s: float, condition: Callable[[], bool]):
+    """Simple test helper for putting a timeout on a condition occuring"""
+    start_time = time.time()
+    did_condition_occur = False
+    while time.time() <= start_time + timeout_s:
+        did_condition_occur = condition()
+        if did_condition_occur:
+            break
+    return did_condition_occur
+
+# to run tests: use 
+def test_math():
+    assert 2 + 2 == 5   # This should fail for most mathematical systems\
+
+
