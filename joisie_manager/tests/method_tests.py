@@ -27,11 +27,6 @@ from test_helpers import *
 def get_state_setter(task_manager):
     return get_publisher(task_manager, String, "joisie_set_state")
 
-
-# Function name starts with "test_"
-def test_math():
-    assert 2 + 2 == 5   # This should fail for most mathematical systems\
-
 def test_send_waypoint_NED():
     assert 2 + 2 == 5  
 

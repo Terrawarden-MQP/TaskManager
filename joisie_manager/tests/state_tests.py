@@ -23,24 +23,6 @@ from joisie_manager.taskmanager import *
 
 # HELPERS FOR INSTANTIATING TASK MANAGER AND MOCKING TELEMETRY
 from test_helpers import *
-
-
-# Function name starts with "test_"
-def test_math():
-    assert 2 + 2 == 5   # This should fail for most mathematical systems
-
-# class State(Enum):
-#     STARTUP = "STARTUP"
-#     FAILSAFE = "FAILSAFE"
-#     LANDING = "LAND"
-
-#     WAITING = "WAIT"
-#     HOLD = "HOLD"
-
-#     SEARCHING = "SEARCH"
-#     NAVIGATING = "NAV"
-#     GRASPING = "GRASP"
-#     DEPOSITING = "DEPOSIT"
     
 def test_STARTUP_to_HOLD():
     assert 2 == 2
