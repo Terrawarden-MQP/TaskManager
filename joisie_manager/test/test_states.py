@@ -22,9 +22,16 @@ from ..joisie_manager.taskmanager import *
 
 
 # HELPERS FOR INSTANTIATING TASK MANAGER AND MOCKING TELEMETRY
-from test_helpers import *
+from .test_helpers import *
 
-rclpy.init()
+@pytest.fixture
+def manager():
+    # Runs before tests
+    rclpy.init()
+    manager = TaskManagerNode()
+    yield manager
+    # Runs after tests
+    rclpy.shutdown()
 
 # Function name starts with "test_"
 def test_math():
@@ -42,6 +49,12 @@ def test_math():
 #     NAVIGATING = "NAV"
 #     GRASPING = "GRASP"
 #     DEPOSITING = "DEPOSIT"
+
+
+
+# state_publisher = get_publisher(manager, String, 'state_setter_topic')
+# state_msg = String("HOLD")
+# state_publisher.publish(state_msg)
     
 def state_change_condition(manager, new_state):
         # Allow manager to run and process incoming info
@@ -53,9 +66,18 @@ def state_change_condition(manager, new_state):
         return condition
 
 
-def test_STARTUP_to_HOLD():
-    manager = TaskManagerNode()
-    telemetry_pub = get_publisher(manager, Telemetry, 'drone_telemetry_topic')
+def test_STARTUP_to_HOLD(manager):
+    telemetry_pub = get_publisher(manager, DroneTelemetry, 'drone_telemetry_topic')
+    telemetry_msg = mock_telemetry((1.,-1.,0.5)) # fake message of drone being at xyz position (1,0,0)
+    
+    # Need a telemetry message to tell the drone it is in offboard mode and flying
+    telemetry_pub.publish(telemetry_msg)
+
+    assert timeout_condition(5, state_change_condition(manager, State.HOLD))
+
+def test_STARTUP_to_GRASPING(manager):
+    # manager = TaskManagerNode()
+    telemetry_pub = get_publisher(manager, DroneTelemetry, 'drone_telemetry_topic')
     telemetry_msg = mock_telemetry()
 
     # state_publisher = get_publisher(manager, String, 'state_setter_topic')
@@ -67,14 +89,11 @@ def test_STARTUP_to_HOLD():
 
     assert timeout_condition(5, state_change_condition(manager, State.HOLD))
 
-def test_STARTUP_to_GRASPING():
-    assert 2 == 2
-
-def test_STARTUP_to_SEARCHING():
+def test_STARTUP_to_SEARCHING(manager):
 
     assert 2 == 2
 
-def test_HOLD_to_STARTUP():
+def test_HOLD_to_STARTUP(manager):
     assert 2 == 2
 
 def test_SEARCHING_to_WAITING_to_NAVIGATING():

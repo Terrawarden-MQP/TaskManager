@@ -20,10 +20,17 @@ import time
 import pytest
 from ..joisie_manager.taskmanager import *
 
-rclpy.init()
+from .test_helpers import *
+
+@pytest.fixture
+def rclpy_sucks():
+    # Runs before tests
+    rclpy.init()
+    yield
+    # Runs after tests
+    rclpy.shutdown()
 
 # HELPERS FOR INSTANTIATING TASK MANAGER AND MOCKING TELEMETRY
-from .test_helpers import *
 
 def get_state_setter(task_manager):
     return get_publisher(task_manager, String, "joisie_set_state")
@@ -31,26 +38,26 @@ def get_state_setter(task_manager):
 
 # Function name starts with "test_"
 @pytest.mark.skip(reason="not implemented")
-def test_math():
+def test_math(rclpy_sucks):
     assert 2 + 2 == 5   # This should fail for most mathematical systems\
 
 @pytest.mark.skip(reason="not implemented")
-def test_send_waypoint_NED():
+def test_send_waypoint_NED(rclpy_sucks):
     assert 2 + 2 == 5  
 
 @pytest.mark.skip(reason="not implemented")
-def test_offset_point_FLU():
+def test_offset_point_FLU(rclpy_sucks):
     assert 2 + 2 == 5  
 
 @pytest.mark.skip(reason="not implemented")
-def test_FLU_to_NED():
+def test_FLU_to_NED(rclpy_sucks):
     assert 2 + 2 == 5  
 
 @pytest.mark.skip(reason="not implemented")
-def test_FLU_to_NED_quaternion():
+def test_FLU_to_NED_quaternion(rclpy_sucks):
     assert 2 + 2 == 5  
 
-def test_is_in_range_NED():
+def test_is_in_range_NED(rclpy_sucks):
     manager = TaskManagerNode()
 
     dronePoint = [0,0,0]
@@ -58,14 +65,14 @@ def test_is_in_range_NED():
     # make publisher
     # publish mock_telemetry
 
-    refRange = [1.2,0,1.2]
-    assert manager.isInRangeNED(refRange, 1.1, 1.5) == false #out of range X
-    assert manager.isInRangeNED(refRange, 1.5, 1.1) == false #out of range Z
-    assert manager.isInRangeNED(refRange, 1.5, 1.5) == true #in range X, Y, Z
+    refRange = Point(x=1.2,y=0.,z=1.2)
+    assert manager.isInRangeNED(refRange, 1.1, 1.5) == False #out of range X
+    assert manager.isInRangeNED(refRange, 1.5, 1.1) == False #out of range Z
+    assert manager.isInRangeNED(refRange, 1.5, 1.5) == True #in range X, Y, Z
 
-    refRange = [0, 1.2, 0]
-    assert manager.isInRangeNED(refRange, 1.1, 1) == false #out of range Y
-    assert manager.isInRangeNED(refRange, 1.5, 1.5) == true #in range X, Y, Z
+    refRange = Point(x=0., y=1.2, z=0.)
+    assert manager.isInRangeNED(refRange, 1.1, 1) == False #out of range Y
+    assert manager.isInRangeNED(refRange, 1.5, 1.5) == True #in range X, Y, Z
 
 
 
