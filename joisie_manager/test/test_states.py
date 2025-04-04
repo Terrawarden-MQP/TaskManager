@@ -67,11 +67,17 @@ def state_change_condition(manager, new_state):
 
 
 def test_STARTUP_to_HOLD(manager):
+    #initiate publishers
     telemetry_pub = get_publisher(manager, DroneTelemetry, 'drone_telemetry_topic')
+    state_publisher = get_publisher(manager, String, 'state_setter_topic')
+
+    #fake messages
     telemetry_msg = mock_telemetry((1.,-1.,0.5)) # fake message of drone being at xyz position (1,0,0)
-    
-    # Need a telemetry message to tell the drone it is in offboard mode and flying
-    telemetry_pub.publish(telemetry_msg)
+    state_msg = String("HOLD") # fake drone in hold position
+
+    #publishes messages
+    telemetry_pub.publish(telemetry_msg) # Need a telemetry message to tell the drone it is in offboard mode and flying
+    state_publisher.publish(state_msg) # tell the drone it's holding
 
     assert timeout_condition(5, state_change_condition(manager, State.HOLD))
 

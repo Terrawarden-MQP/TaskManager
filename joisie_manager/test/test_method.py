@@ -65,12 +65,12 @@ def test_is_in_range_NED(rclpy_sucks):
     # make publisher
     # publish mock_telemetry
 
-    refRange = Point(x=1.2,y=0.,z=1.2)
+    refRange = create_point(1.2, 0, 1.2)
     assert manager.isInRangeNED(refRange, 1.1, 1.5) == False #out of range X
     assert manager.isInRangeNED(refRange, 1.5, 1.1) == False #out of range Z
     assert manager.isInRangeNED(refRange, 1.5, 1.5) == True #in range X, Y, Z
 
-    refRange = Point(x=0., y=1.2, z=0.)
+    refRange = create_point(0, 1.2, 0)
     assert manager.isInRangeNED(refRange, 1.1, 1) == False #out of range Y
     assert manager.isInRangeNED(refRange, 1.5, 1.5) == True #in range X, Y, Z
 

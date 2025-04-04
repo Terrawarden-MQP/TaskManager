@@ -71,6 +71,10 @@ def timeout_condition(timeout_s: float, condition: Callable[[], bool]):
             break
     return did_condition_occur
 
+def create_point(x: float, y: float, z: float):
+    point = Point(x=float(x), y=float(y), z=float(z))
+    return point
+
 # to run tests: use 
 def test_math():
     assert 2 + 2 == 5   # This should fail for most mathematical systems\
