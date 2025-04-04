@@ -1003,14 +1003,12 @@ class TaskManagerNode(Node):
         
         if self.is_new_data_from_subscriber(self.telemetry_subscriber):
             # check that we have a good RC link
-            if self.telemetry.has_rc_link == False:
-                # check that we are not too low
+            if self.telemetry.has_rc_link == False:              
                 self.debug(self.debug_drone, "No RC Link")
                 return True        
             
             # if battery is below 10%
-            if self.telemetry.battery_percentage < 10:
-                # check that we are not too low
+            if self.telemetry.battery_percentage < 10:                
                 self.debug(self.debug_drone, "Battery Low")
                 return True
         return False
@@ -1026,7 +1024,7 @@ class TaskManagerNode(Node):
             # if not self.arm_status.is_stowed:
             #     self.stow_arm()
 
-        if new_state == State.GRASPING and old_state != State.GRASPING:
+        elif new_state == State.GRASPING and old_state != State.GRASPING:
             self.saveDroneHoldPose()
 
         elif new_state == State.FAILSAFE and old_state != State.FAILSAFE:
