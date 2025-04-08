@@ -6,7 +6,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import Image
 from std_msgs.msg import String, Bool, Header
 from vision_msgs.msg import Detection2D
-from terrawarden_interfaces.msg import DroneTelemetry, DroneWaypoint, ArmStatus
+from terrawarden_interfaces.msg import DroneTelemetry, DroneWaypoint, ArmStatus, ArmCommand
 from geometry_msgs.msg import Pose2D, Point, PointStamped, PoseWithCovariance, PoseStamped
 from builtin_interfaces.msg import Time
 import tf2_ros
@@ -91,14 +91,14 @@ class TaskManagerNode(Node):
 
         ### ARM TOPICS --------------------------------------------------------
 
-        # Topic for sending grasp to arm
-        self.declare_parameter('arm_grasp_topic', 'joisie_grasp_send')
+        # Topic for sending gripper to move
+        self.declare_parameter('grasp_command_topic', 'force_grasp')
 
-        # Topic for sending grasp to arm WITH TRAJECTORY
-        self.declare_parameter('traj_arm_grasp_topic', 'joisie_grasp_send')
+        # Topic for sending arm commands to move on trajectories and potentiall to grasp
+        self.declare_parameter('arm_command_topic', 'move_arm_command')
 
         # CustomArmMsg from Arm Node
-        self.declare_parameter('arm_status_topic', 'joisie_arm_status')
+        self.declare_parameter('arm_status_topic', 'arm_status')
 
         # Topic for InRangeOfObj Service Call to Arm Node
         self.declare_parameter('arm_service_topic', 'joisie_arm_inrange_service')
@@ -210,10 +210,10 @@ class TaskManagerNode(Node):
                                                     self.get_parameter('drone_pose_topic').value, 10)
         # self.centroid_publisher = self.create_publisher(Pose2D, # this publisher is redundant and not used
         #                                             self.get_parameter('centroid_topic').value, 10)
-        self.grasp_publisher = self.create_publisher(PoseStamped, 
-                                                    self.get_parameter('arm_grasp_topic').value, 10)
-        self.traj_grasp_publisher = self.create_publisher(PoseStamped, 
-                                                    self.get_parameter('traj_arm_grasp_topic').value, 10)
+        self.force_grasp_publisher = self.create_publisher(Bool, 
+                                                    self.get_parameter('grasp_command_topic').value, 10)
+        self.arm_command_publisher = self.create_publisher(PoseStamped, 
+                                                    self.get_parameter('arm_command_topic').value, 10)
         self.state_publisher = self.create_publisher(String,
                                                     self.get_parameter('state_topic').value, 10)
                 
@@ -683,22 +683,26 @@ class TaskManagerNode(Node):
 
     def openGripper(self):
         '''send ROSmsg to arm control node to open gripper'''
-        self.publish_helper(self.gripper_publisher, True)
+        self.publish_helper(self.force_grasp_publisher, True)
 
     
     def closeGripper(self):
         '''send ROSmsg to arm control node to close gripper'''
-        self.publish_helper(self.gripper_publisher, False)
+        self.publish_helper(self.force_grasp_publisher, False)
 
 
-    def sendArmToPoint(self, poseStampedMsg, trajectory:bool=True):
+    def sendArmCommand(self, poseStampedMsg:PoseStamped, task_space:bool=False, grasp_at_end_of_movement:bool=False, movement_time:float=1.0) -> None:
         '''send ROSmsg to arm control node with a point'''
+        msg = ArmCommand()
+        msg.x = poseStampedMsg.pose.position.x
+        msg.y = poseStampedMsg.pose.position.y
+        msg.z = poseStampedMsg.pose.position.z
+        msg.tolerance = 0.02 # meters, this is the default tolerance for arm movement
+        msg.grasp_at_end_of_movement = grasp_at_end_of_movement # use the parameter for grasping
+        msg.trajectory_mode = "task" if task_space else "joint" # task space or joint space 
+        msg.movement_time = movement_time # seconds to complete the movement, default is 1.0s
+        self.publish_helper(self.arm_command_publisher,poseStampedMsg) # publish the poseStamped to the arm command topic
 
-        # send posestamped to different topics depending wether trajectory is true or false
-        if trajectory:
-            self.publish_helper(self.traj_grasp_publisher, poseStampedMsg)
-        else:
-            self.publish_helper(self.grasp_publisher, poseStampedMsg)
 
     def set_wait(self, next_state: State, wait_time_s: float = 0.5, wait_until_fn: Callable[[None], bool] = None) -> State:
         '''
@@ -725,7 +729,7 @@ class TaskManagerNode(Node):
         '''
         this loops when startup is current state
         checks drone telemetry and switches to HOLD if drone is offboard and armed
-        '''
+        '''            
         
         # check if drone is flying and offboard
         if self.is_new_data_from_subscriber(self.telemetry_subscriber):
@@ -871,17 +875,14 @@ class TaskManagerNode(Node):
         
         # calculate grasp
         # generate posestamped message from grasp
-        # TODO if refresh rate gets to live rate, use this instead
-        # if self.is_new_data_from_subscriber(self.grasp_subscriber):
-        #     # self.raw_grasp
-        #     self.sendArmToPoint(self.raw_grasp)
+        
 
         
         if self.is_new_data_from_subscriber(self.extract_subscriber):
             pt = PoseStamped()
             pt.header = self.extract_pt.header
             pt.pose.position = self.extract_pt.point
-            self.sendArmToPoint(pt)
+            self.sendArmCommand(pt, task_space=True, grasp_at_end_of_movement=True, movement_time=1.0) # send the grasp command to the arm
             
             #TODO: check that arm got a grasp and we can move to a new state
             # if ARM_GOT_OBJECT:
@@ -1015,8 +1016,7 @@ class TaskManagerNode(Node):
 
 # --- STATE MACHINE TRANSITION LOGIC
 
-    def state_transitions(self, old_state, new_state):
-            
+    def state_transitions(self, old_state, new_state):                    
         # just entering the HOLD for the first time
         if new_state == State.HOLD and old_state != State.HOLD:
             # save the POSE from telemetry to hold at
@@ -1035,7 +1035,7 @@ class TaskManagerNode(Node):
             self.has_failsafed = True
 
             # if not self.arm_status.is_stowed:
-            #     self.stow_arm()
+            #     self.stow_arm()                    
             
         # TODO: verify integrity of this logic, it may need to be adjusted for the failsafe state
         elif new_state != State.FAILSAFE and old_state == State.FAILSAFE:
@@ -1130,7 +1130,8 @@ def main(args=None):
 
     manager_node = TaskManagerNode()
     
-    # # Now actually allow ROS to process callbacks
+    manager_node.stow_arm()
+    # Now actually allow ROS to process callbacks
     rclpy.spin(manager_node)
 
     manager_node.destroy_node()
