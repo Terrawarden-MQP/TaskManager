@@ -683,15 +683,16 @@ class TaskManagerNode(Node):
 
     def openGripper(self):
         '''send ROSmsg to arm control node to open gripper'''
-        self.publish_helper(self.force_grasp_publisher, True)
+        self.publish_helper(self.force_grasp_publisher, Bool(data=True))
 
     
     def closeGripper(self):
         '''send ROSmsg to arm control node to close gripper'''
-        self.publish_helper(self.force_grasp_publisher, False)
+        self.publish_helper(self.force_grasp_publisher, Bool(data=False))
 
 
-    def sendArmCommand(self, poseStampedMsg:PoseStamped, task_space:bool=False, grasp_at_end_of_movement:bool=False, movement_time:float=1.0) -> None:
+    def sendArmCommand(self, poseStampedMsg:PoseStamped, task_space:str="track", 
+                       grasp_at_end_of_movement:bool=False, movement_time:float=1.0) -> None:
         '''send ROSmsg to arm control node with a point'''
         msg = ArmCommand()
         msg.x = poseStampedMsg.pose.position.x
@@ -699,7 +700,7 @@ class TaskManagerNode(Node):
         msg.z = poseStampedMsg.pose.position.z
         msg.tolerance = 0.05 # meters, this is the default tolerance for arm movement
         msg.grasp_at_end_of_movement = grasp_at_end_of_movement # use the parameter for grasping
-        msg.trajectory_mode = "task" if task_space else "joint" # task space or joint space 
+        msg.trajectory_mode = task_space # task space or joint space 
         msg.movement_time = movement_time # seconds to complete the movement, default is 1.0s
         self.publish_helper(self.arm_command_publisher,msg) # publish the poseStamped to the arm command topic
 
@@ -810,6 +811,7 @@ class TaskManagerNode(Node):
             #     heading=heading_deg,
             #     max_ang_vel_deg_s=degrees_per_second * 0.5,  # Slow down for the final preparation to the detected object
             # )
+            self.unstow_arm()
 
             return self.set_wait(State.NAVIGATING, 5) # Move to grasp after 5 seconds 
         
@@ -884,12 +886,24 @@ class TaskManagerNode(Node):
             pt.pose.position = self.extract_pt.point
              
             diffx = self.arm_status.ee_x - pt.pose.position.x
-            diffy = self.arm_status.ee_y - pt.pose.position.y
+            diffy = self.arm_status.ee_y - pt.pose.position.y 
             diffz = self.arm_status.ee_z - pt.pose.position.z
             posDiff = math.sqrt(diffx**2 + diffy**2 + diffz**2)
-            moveTime = 2*posDiff
             
-            self.sendArmCommand(pt, task_space=False, grasp_at_end_of_movement=False, movement_time=moveTime) # send the grasp command to the arm
+            # send the grasp command to the arm
+            self.sendArmCommand(pt, task_space="track", grasp_at_end_of_movement=False) 
+
+            # self.grasp_tolerance = 0.025
+            self.debug(self.debug_arm, f"Position difference between armPos and setpoint: {posDiff}")
+            # in theory meters - these should be class variables but i'm still testing them
+            # Reason i'm unsure of unit is bc the print statement gives me a min of like 0.397
+            # while the claw is maybe 4cm from the correct position
+            # See more info in #manipulators  -K
+            if posDiff < 0.05: 
+                self.closeGripper()
+            elif posDiff > 0.25:
+                self.openGripper()
+
             
             #TODO: check that arm got a grasp and we can move to a new state
             # if ARM_GOT_OBJECT:
@@ -1129,6 +1143,9 @@ class TaskManagerNode(Node):
         Times the main loop to run at 20Hz (every 0.05 seconds)
         '''
         
+        # Stow arm at node launch
+        self.stow_arm() 
+
         self.timer = self.create_timer(0.05, self.main_loop)
         self.debug(True, "Task Manager initialized with 20Hz timer")
 
@@ -1137,7 +1154,6 @@ def main(args=None):
 
     manager_node = TaskManagerNode()
     
-    # manager_node.stow_arm()
     # Now actually allow ROS to process callbacks
     rclpy.spin(manager_node)
 

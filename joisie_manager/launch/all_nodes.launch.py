@@ -188,7 +188,7 @@ def generate_launch_description():
             executable="static_transform_publisher",
             name="static_tf_pub",
             # Pitch rotation 40 deg + translation
-            arguments = ['--x', '0.12', '--y', '0.0', '--z', '-0.16', '--yaw', '0', '--pitch', '0.698132', '--roll', '0', '--frame-id', 'drone_frame', '--child-frame-id', 'camera_link']
+            arguments = ['--x', '0.12', '--y', '0.0', '--z', '-0.175', '--yaw', '0', '--pitch', '0.698132', '--roll', '0', '--frame-id', 'drone_frame', '--child-frame-id', 'camera_link']
             # ros2 run tf2_ros static_transform_publisher 0.12 0.06 -0.04 0 0.698 0 drone_frame camera_link
         )
     ])
