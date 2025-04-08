@@ -142,7 +142,7 @@ class TaskManagerNode(Node):
         self._detection = Detection2D()
         self._extract_pt = PointStamped()
         self._raw_grasp = PoseStamped()
-        # self._arm_status = DynaArmStatus()    
+        self._arm_status = ArmStatus()    
 
         # STORE PREVIOUS MESSAGE SENT PER TOPIC
         self.last_sent_messages = {}
@@ -212,7 +212,7 @@ class TaskManagerNode(Node):
         #                                             self.get_parameter('centroid_topic').value, 10)
         self.force_grasp_publisher = self.create_publisher(Bool, 
                                                     self.get_parameter('grasp_command_topic').value, 10)
-        self.arm_command_publisher = self.create_publisher(PoseStamped, 
+        self.arm_command_publisher = self.create_publisher(ArmCommand, 
                                                     self.get_parameter('arm_command_topic').value, 10)
         self.state_publisher = self.create_publisher(String,
                                                     self.get_parameter('state_topic').value, 10)
@@ -697,11 +697,11 @@ class TaskManagerNode(Node):
         msg.x = poseStampedMsg.pose.position.x
         msg.y = poseStampedMsg.pose.position.y
         msg.z = poseStampedMsg.pose.position.z
-        msg.tolerance = 0.02 # meters, this is the default tolerance for arm movement
+        msg.tolerance = 0.05 # meters, this is the default tolerance for arm movement
         msg.grasp_at_end_of_movement = grasp_at_end_of_movement # use the parameter for grasping
         msg.trajectory_mode = "task" if task_space else "joint" # task space or joint space 
         msg.movement_time = movement_time # seconds to complete the movement, default is 1.0s
-        self.publish_helper(self.arm_command_publisher,poseStampedMsg) # publish the poseStamped to the arm command topic
+        self.publish_helper(self.arm_command_publisher,msg) # publish the poseStamped to the arm command topic
 
 
     def set_wait(self, next_state: State, wait_time_s: float = 0.5, wait_until_fn: Callable[[None], bool] = None) -> State:
@@ -882,7 +882,14 @@ class TaskManagerNode(Node):
             pt = PoseStamped()
             pt.header = self.extract_pt.header
             pt.pose.position = self.extract_pt.point
-            self.sendArmCommand(pt, task_space=True, grasp_at_end_of_movement=True, movement_time=1.0) # send the grasp command to the arm
+             
+            diffx = self.arm_status.ee_x - pt.pose.position.x
+            diffy = self.arm_status.ee_y - pt.pose.position.y
+            diffz = self.arm_status.ee_z - pt.pose.position.z
+            posDiff = math.sqrt(diffx**2 + diffy**2 + diffz**2)
+            moveTime = 2*posDiff
+            
+            self.sendArmCommand(pt, task_space=False, grasp_at_end_of_movement=False, movement_time=moveTime) # send the grasp command to the arm
             
             #TODO: check that arm got a grasp and we can move to a new state
             # if ARM_GOT_OBJECT:
@@ -1130,7 +1137,7 @@ def main(args=None):
 
     manager_node = TaskManagerNode()
     
-    manager_node.stow_arm()
+    # manager_node.stow_arm()
     # Now actually allow ROS to process callbacks
     rclpy.spin(manager_node)
 
