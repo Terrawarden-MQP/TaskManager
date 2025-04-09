@@ -147,14 +147,14 @@ class TaskManagerNode(Node):
         # STORE PREVIOUS MESSAGE SENT PER TOPIC
         self.last_sent_messages = {}
         self.msg_timeout = 3
+
+        # hold state variables
+        self.hold_NED_Point = Point()
+        self.hold_Heading = 0.0
         
         # failsafe variables
         self.has_failsafed = False
         
-        # hold state variables
-        self.hold_NED_Point = Point()
-        self.hold_Heading = 0.0
-
         # search state tracking
         # TOOD: add zig-zag GPS pattern
             # for now it could use the hold state pos tracking, but I will keep it like this for the future
@@ -162,6 +162,7 @@ class TaskManagerNode(Node):
         self.search_start_heading = None
         self.entry_point = None
         self.border_points = []
+        self.approach_point_offset = Point(x=-0.707, y=0.0, z=0.707)
 
         # waiting, stowing, unstowing state variables
         self.next_state = State.HOLD
@@ -797,7 +798,7 @@ class TaskManagerNode(Node):
 ## commented out to decrease testing complexity, --JJ 02/04/2025
             # self.debug(self.debug_drone, "using hover to time turn towards detected object in place") 
             # # convert that 3D point to NED, offset it above and towards the drone a bit
-            # FLU_pos = self.offsetPointFLU(self.extract_pt.point, Point(x=-0.707, y=0., z=0.707))
+            # FLU_pos = self.offsetPointFLU(self.extract_pt.point, self.approach_point_offset)
             # NED_pos = self.FLU2NED_quaternion(FLU_pos, self.extract_pt.header.stamp) 
                     
             # # calculate heading needed to turn towards point
@@ -811,7 +812,12 @@ class TaskManagerNode(Node):
             #     heading=heading_deg,
             #     max_ang_vel_deg_s=degrees_per_second * 0.5,  # Slow down for the final preparation to the detected object
             # )
-            self.unstow_arm()
+            # self.unstow_arm()
+
+            # # wait until arm is not stowed anymore, before switching states
+            # def check_arm_position_unstowed():
+            #     return not self.arm_status.is_stowed
+            # return self.set_wait(State.GRASPING, check_arm_position_unstowed) 
 
             return self.set_wait(State.NAVIGATING, 5) # Move to grasp after 5 seconds 
         
@@ -834,7 +840,7 @@ class TaskManagerNode(Node):
             self.debug(self.debug_vbm, f'new point extracted at ({self.extract_pt.point}), recalculating approach coordinate') 
 
             # convert that 3D point to NED, offset it above and towards the drone a bit        
-            FLU_pos = self.offsetPointFLU(self.extract_pt.point, Point(x=-0.707, y=0., z=0.707))
+            FLU_pos = self.offsetPointFLU(self.extract_pt.point, self.approach_point_offset)
             NED_pos = self.FLU2NED_quaternion(FLU_pos, self.extract_pt.header.stamp) 
                     
             # calculate heading needed to turn towards point
@@ -849,16 +855,8 @@ class TaskManagerNode(Node):
             
             #TODO: make these ROS-tunable parameters
             if self.isInRangeNED(NED_pos, 0.1, 0.1):  
-                self.debug(self.debug_vbm, f'within range of object, changing to GRASPING') 
-
-                # if self.arm_status.is_stowed:
-                #     self.unstow_arm()
-
-                def check_arm_position_unstowed():
-                    return self.arm_status.at_setpoint and not self.arm_status.is_stowed
-
-                # return self.set_wait(State.GRASPING, check_arm_position_unstowed) # Move to grasp state when unstowed
-                return self.set_wait(State.GRASPING, 5) # Move to grasp after 5 seconds
+                self.debug(self.debug_vbm, f'within range of object, changing to GRASPING')               
+                return self.set_wait(State.HOLD, 5) # Move to grasp after 5 seconds
 
         # stay in navigation state
         self.debug(self.debug_drone, f'out of range, continue NAVIGATING') 
@@ -876,9 +874,7 @@ class TaskManagerNode(Node):
         self.droneHover()
         
         # calculate grasp
-        # generate posestamped message from grasp
-        
-
+        # generate posestamped message from grasp    
         
         if self.is_new_data_from_subscriber(self.extract_subscriber):
             pt = PoseStamped()
@@ -901,8 +897,7 @@ class TaskManagerNode(Node):
                 self.closeGripper()
             elif posDiff > 0.25:
                 self.openGripper()
-
-            
+        
             #TODO: check that arm got a grasp and we can move to a new state
             # if ARM_GOT_OBJECT:
             #     self.debug(self.debug_arm, f'grasp successful, moving to next state')
