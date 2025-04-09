@@ -24,7 +24,7 @@ def generate_launch_description():
         # DeclareLaunchArgument("vbm_grasp_topic", default_value="joisie_grasp_read", description="Topic for receiving grasp from VBM"), # SEE pos_topic
         DeclareLaunchArgument('pos_topic', default_value='joisie_grasp_read', description='Grasp pose topic'),
         DeclareLaunchArgument("arm_grasp_topic", default_value="joisie_grasp_send", description="Topic for sending grasp to arm"),
-        DeclareLaunchArgument("arm_status_topic", default_value="joisie_arm_status", description="CustomArmMsg from Arm Node"),
+        DeclareLaunchArgument("arm_status_topic", default_value="arm_status", description="CustomArmMsg from Arm Node"),
         DeclareLaunchArgument("arm_service_topic", default_value="joisie_arm_inrange_service", description="Topic for InRangeOfObj Service Call to Arm Node"),
         DeclareLaunchArgument("arm_grasp_topic", default_value="arm_grasp_topic", description="send arm to point (no trajectory)"),
         DeclareLaunchArgument("traj_arm_grasp_topic", default_value="joisie_arm_trajectory_target", description="send arm to point with trajectory"),

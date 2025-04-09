@@ -695,9 +695,9 @@ class TaskManagerNode(Node):
                        grasp_at_end_of_movement:bool=False, movement_time:float=1.0) -> None:
         '''send ROSmsg to arm control node with a point'''
         msg = ArmCommand()
-        msg.x = poseStampedMsg.pose.position.x
-        msg.y = poseStampedMsg.pose.position.y
-        msg.z = poseStampedMsg.pose.position.z
+        msg.goal.x = poseStampedMsg.pose.position.x
+        msg.goal.y = poseStampedMsg.pose.position.y
+        msg.goal.z = poseStampedMsg.pose.position.z
         msg.tolerance = 0.05 # meters, this is the default tolerance for arm movement
         msg.grasp_at_end_of_movement = grasp_at_end_of_movement # use the parameter for grasping
         msg.trajectory_mode = task_space # task space or joint space 
@@ -885,9 +885,9 @@ class TaskManagerNode(Node):
             pt.header = self.extract_pt.header
             pt.pose.position = self.extract_pt.point
              
-            diffx = self.arm_status.ee_x - pt.pose.position.x
-            diffy = self.arm_status.ee_y - pt.pose.position.y 
-            diffz = self.arm_status.ee_z - pt.pose.position.z
+            diffx = self.arm_status.ee_pos.x - pt.pose.position.x
+            diffy = self.arm_status.ee_pos.y - pt.pose.position.y 
+            diffz = self.arm_status.ee_pos.z - pt.pose.position.z
             posDiff = math.sqrt(diffx**2 + diffy**2 + diffz**2)
             
             # send the grasp command to the arm
@@ -896,8 +896,6 @@ class TaskManagerNode(Node):
             # self.grasp_tolerance = 0.025
             self.debug(self.debug_arm, f"Position difference between armPos and setpoint: {posDiff}")
             # in theory meters - these should be class variables but i'm still testing them
-            # Reason i'm unsure of unit is bc the print statement gives me a min of like 0.397
-            # while the claw is maybe 4cm from the correct position
             # See more info in #manipulators  -K
             if posDiff < 0.05: 
                 self.closeGripper()
