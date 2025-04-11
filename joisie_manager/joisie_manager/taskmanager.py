@@ -805,12 +805,12 @@ class TaskManagerNode(Node):
             px4_yaw_rad = math.atan2(diff_east, diff_north) 
             heading_deg = self.px4_yaw_to_heading(px4_yaw_rad)            
             
-            self.sendWaypointNED(
-                self.retrieveDroneHoldPose()[0],  # NED position
-                heading=heading_deg,
-                max_ang_vel_deg_s=degrees_per_second * 0.5,  # Slow down for the final preparation to the detected object
-            )
-            self.unstow_arm()
+            # self.sendWaypointNED(
+            #     self.retrieveDroneHoldPose()[0],  # NED position
+            #     heading=heading_deg,
+            #     max_ang_vel_deg_s=degrees_per_second * 0.5,  # Slow down for the final preparation to the detected object
+            # )
+            # self.unstow_arm() # TODO uncomment
 
             # # wait until arm is not stowed anymore, before switching states
             # def check_arm_position_unstowed():
@@ -842,6 +842,7 @@ class TaskManagerNode(Node):
             NED_pos = self.FLU2NED_quaternion(FLU_pos, self.extract_pt.header.stamp) 
                     
             # calculate heading needed to turn towards point
+            # TODO: WRONG ATAN2 and WRONG POINT REACHING
             diff_north = NED_pos.x - self.telemetry.pos.pose.position.x
             diff_east = NED_pos.y - self.telemetry.pos.pose.position.y
             px4_yaw_rad = math.atan2(diff_east, diff_north) 
@@ -885,16 +886,16 @@ class TaskManagerNode(Node):
             posDiff = math.sqrt(diffx**2 + diffy**2 + diffz**2)
             
             # send the grasp command to the arm
-            self.sendArmCommand(pt, task_space="track", grasp_at_end_of_movement=False) 
+            # self.sendArmCommand(pt, task_space="track", grasp_at_end_of_movement=False) # TODO uncomment
 
             # self.grasp_tolerance = 0.025
             self.debug(self.debug_arm, f"Position difference between armPos and setpoint: {posDiff}")
             # in theory meters - these should be class variables but i'm still testing them
             # See more info in #manipulators  -K
-            if posDiff < 0.05: 
-                self.closeGripper()
-            elif posDiff > 0.25:
-                self.openGripper()
+            # if posDiff < 0.05: # TODO uncomment
+                # self.closeGripper() # TODO uncomment
+            # elif posDiff > 0.25: # TODO uncomment
+                # self.openGripper() # TODO uncomment
         
             #TODO: check that arm got a grasp and we can move to a new state
             # if ARM_GOT_OBJECT:
@@ -988,12 +989,12 @@ class TaskManagerNode(Node):
                 self.debug(self.debug_drone, "Not in Offboard Mode")
                 return True   
             # check that we have more than 0.4m of ground clearance beneath the drone
-            if self.telemetry.altitude_above_ground < 0.4:
+            if self.telemetry.altitude_above_ground < 0.2:
                 # check that we are not too low
                 self.debug(self.debug_drone, "Ground Too Close, Abort")
                 return True          
             
-            if self.telemetry.altitude_above_ground < 0.8:
+            if self.telemetry.altitude_above_ground < 0.5:
                 # check that we are not too low
                 self.debug(self.debug_drone, "Ground Proximity Warning")
                 return False     
