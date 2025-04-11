@@ -102,9 +102,10 @@ def generate_launch_description():
         Node(
             package="joisie_vision",
             # namespace="joisie_vision",
-            executable="color_detection",
+            executable="live_detection",
             parameters=[{
                     "topic":"/camera/camera/color/image_raw",
+                    "centroid_topic":LaunchConfiguration("coord_topic"),
                     "show": LaunchConfiguration('show_cv')
             }]
         ),

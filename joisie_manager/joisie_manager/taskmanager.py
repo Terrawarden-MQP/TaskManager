@@ -52,10 +52,10 @@ class TaskManagerNode(Node):
             "slow_max_ang_vel_deg_s": 30.0,
             "slow_max_lin_accel_m_s2": 0.25,
             "slow_max_z_vel_m_s": 0.5,
-            "precision_max_lin_vel_m_s": 0.3,
+            "precision_max_lin_vel_m_s": 0.1,
             "precision_max_ang_vel_deg_s": 20.0,
             "precision_max_lin_accel_m_s2": 0.3,
-            "precision_max_z_vel_m_s": 0.3,
+            "precision_max_z_vel_m_s": 0.1,
         }
 
         ### TOPIC DECLARATION - ALL PARAMETERIZED THROUGH ROS2 LAUNCH
@@ -793,26 +793,24 @@ class TaskManagerNode(Node):
         # detection found, transition states and rotate towards the detected object
         if self.is_new_data_from_subscriber(self.extract_subscriber):
 
-            self.debug(self.debug_drone, f'found object at ({self.extract_pt.point}), changing to NAVIGATING') 
+            self.debug(self.debug_drone, f'found object at ({self.extract_pt.point}), changing to NAVIGATING')                     
+            self.debug(self.debug_drone, "Using hover to time turn towards detected object in place") 
+            # convert that 3D point to NED, offset it above and towards the drone a bit
+            FLU_pos = self.offsetPointFLU(self.extract_pt.point, self.approach_point_offset)
+            NED_pos = self.FLU2NED_quaternion(FLU_pos, self.extract_pt.header.stamp) 
                     
-## commented out to decrease testing complexity, --JJ 02/04/2025
-            # self.debug(self.debug_drone, "using hover to time turn towards detected object in place") 
-            # # convert that 3D point to NED, offset it above and towards the drone a bit
-            # FLU_pos = self.offsetPointFLU(self.extract_pt.point, self.approach_point_offset)
-            # NED_pos = self.FLU2NED_quaternion(FLU_pos, self.extract_pt.header.stamp) 
-                    
-            # # calculate heading needed to turn towards point
-            # diff_north = NED_pos.x - self.telemetry.pos.pose.position.x
-            # diff_east = NED_pos.y - self.telemetry.pos.pose.position.y
-            # px4_yaw_rad = math.atan2(diff_east, diff_north) 
-            # heading_deg = self.px4_yaw_to_heading(px4_yaw_rad)            
+            # calculate heading needed to turn towards point
+            diff_north = NED_pos.x - self.telemetry.pos.pose.position.x
+            diff_east = NED_pos.y - self.telemetry.pos.pose.position.y
+            px4_yaw_rad = math.atan2(diff_east, diff_north) 
+            heading_deg = self.px4_yaw_to_heading(px4_yaw_rad)            
             
-            # self.sendWaypointNED(
-            #     self.retrieveDroneHoldPose()[0],  # NED position
-            #     heading=heading_deg,
-            #     max_ang_vel_deg_s=degrees_per_second * 0.5,  # Slow down for the final preparation to the detected object
-            # )
-            # self.unstow_arm()
+            self.sendWaypointNED(
+                self.retrieveDroneHoldPose()[0],  # NED position
+                heading=heading_deg,
+                max_ang_vel_deg_s=degrees_per_second * 0.5,  # Slow down for the final preparation to the detected object
+            )
+            self.unstow_arm()
 
             # # wait until arm is not stowed anymore, before switching states
             # def check_arm_position_unstowed():
@@ -856,7 +854,7 @@ class TaskManagerNode(Node):
             #TODO: make these ROS-tunable parameters
             if self.isInRangeNED(NED_pos, 0.1, 0.1):  
                 self.debug(self.debug_vbm, f'within range of object, changing to GRASPING')               
-                return self.set_wait(State.HOLD, 5) # Move to grasp after 5 seconds
+                return self.set_wait(State.GRASPING, 5) # Move to grasp after 5 seconds
 
         # stay in navigation state
         self.debug(self.debug_drone, f'out of range, continue NAVIGATING') 
