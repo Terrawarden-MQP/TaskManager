@@ -28,6 +28,7 @@ class State(Enum):
     HOLD = "HOLD"
     SEARCHING = "SEARCH"
     NAVIGATING = "NAV"
+    TRACKING = "TRACK"
     GRASPING = "GRASP"
     DEPOSITING = "DEPOSIT"
     WAITING = "WAIT"
@@ -810,7 +811,7 @@ class TaskManagerNode(Node):
             #     heading=heading_deg,
             #     max_ang_vel_deg_s=degrees_per_second * 0.5,  # Slow down for the final preparation to the detected object
             # )
-            # self.unstow_arm() # TODO uncomment
+            self.unstow_arm() # TODO uncomment
 
             # # wait until arm is not stowed anymore, before switching states
             # def check_arm_position_unstowed():
@@ -855,13 +856,64 @@ class TaskManagerNode(Node):
             #TODO: make these ROS-tunable parameters
             if self.isInRangeNED(NED_pos, 0.1, 0.1):  
                 self.debug(self.debug_vbm, f'within range of object, changing to GRASPING')               
-                return self.set_wait(State.GRASPING, 5) # Move to grasp after 5 seconds
+                return self.set_wait(State.TRACKING, 5) # Move to grasp after 5 seconds
 
         # stay in navigation state
         self.debug(self.debug_drone, f'out of range, continue NAVIGATING') 
 
         return State.NAVIGATING
-    
+
+# ----- TRACK
+    def track(self) -> State:
+        '''
+        this loops when grasp is current state
+        no inputs, outputs State
+        '''
+
+        #TODO: possibly move drone closer, within arm's reach? or maybe do that beforehand in navigate
+        self.droneHover()
+        
+        # calculate grasp
+        # generate posestamped message from grasp    
+        
+        if self.is_new_data_from_subscriber(self.extract_subscriber):
+            pt = PoseStamped()
+            pt.header = self.extract_pt.header
+            pt.pose.position = self.extract_pt.point
+
+            tracking_offset = .05
+
+            theta = math.atan2(pt.pose.position.y, pt.pose.position.x)
+
+            offset_x = tracking_offset * math.cos(theta)
+            offset_y = tracking_offset * math.sin(theta)
+             
+            #offset position for tracking before grasping
+            offsetpt = PoseStamped()
+            offsetpt.pose.position.x = pt.pose.position.x - offset_x
+            offsetpt.pose.position.y = pt.pose.position.y - offset_y
+            offsetpt.pose.position.z = pt.pose.position.z
+             
+            diffx = self.arm_status.ee_pos.x - offsetpt.pose.position.x
+            diffy = self.arm_status.ee_pos.y - offsetpt.pose.position.y
+            diffz = self.arm_status.ee_pos.z - offsetpt.pose.position.z
+            posDiff = math.sqrt(diffx**2 + diffy**2 + diffz**2)
+            
+            # send the grasp command to the arm
+            self.sendArmCommand(offsetpt, task_space="track", grasp_at_end_of_movement=False) # TODO uncomment
+
+            # self.grasp_tolerance = 0.025
+            self.debug(self.debug_arm, f"Position difference between armPos and setpoint: {posDiff}")
+            # in theory meters - these should be class variables but i'm still testing them
+            # See more info in #manipulators  -K
+            if posDiff < 0.05: # TODO uncomment
+                return State.GRASPING
+            # elif posDiff > 0.25: # TODO uncomment
+                # self.openGripper() # TODO uncomment
+        
+        return State.TRACKING 
+
+
 # ----- GRASP
     def grasp(self) -> State:
         '''
@@ -886,7 +938,7 @@ class TaskManagerNode(Node):
             posDiff = math.sqrt(diffx**2 + diffy**2 + diffz**2)
             
             # send the grasp command to the arm
-            # self.sendArmCommand(pt, task_space="track", grasp_at_end_of_movement=False) # TODO uncomment
+            self.sendArmCommand(pt, task_space="track", grasp_at_end_of_movement=True) # TODO uncomment
 
             # self.grasp_tolerance = 0.025
             self.debug(self.debug_arm, f"Position difference between armPos and setpoint: {posDiff}")
@@ -898,9 +950,9 @@ class TaskManagerNode(Node):
                 # self.openGripper() # TODO uncomment
         
             #TODO: check that arm got a grasp and we can move to a new state
-            # if ARM_GOT_OBJECT:
-            #     self.debug(self.debug_arm, f'grasp successful, moving to next state')
-            #     return State.DEPOSIT  
+            if self.arm_status.grasping_object == True:
+                self.debug(self.debug_arm, f'grasp successful, moving to next state')
+                return State.DEPOSIT  
             # else: keep trying to grasp for a limited time
             # TODO: add timeout for grasping, if it fails after 5 attempts or so, return to search
             #   self.debug(self.debug_arm, f'grasp failed, retrying grasp')
@@ -1036,7 +1088,8 @@ class TaskManagerNode(Node):
             self.saveDroneHoldPose()
             # if not self.arm_status.is_stowed:
             #     self.stow_arm()
-
+        elif new_state == State.TRACKING and old_state != State.TRACKING:
+            self.saveDroneHoldPose()
         elif new_state == State.GRASPING and old_state != State.GRASPING:
             self.saveDroneHoldPose()
 
@@ -1098,6 +1151,8 @@ class TaskManagerNode(Node):
             new_state = self.search()
         elif self.state == State.NAVIGATING:
             new_state = self.navigate()
+        elif self.state == State.TRACKING:
+            new_state = self.track()  
         elif self.state == State.GRASPING:
             new_state = self.grasp()    
         elif self.state == State.DEPOSITING:
