@@ -37,10 +37,10 @@ def get_state_setter(task_manager):
     return get_publisher(task_manager, String, "joisie_set_state")
 
 
-# Function name starts with "test_"
-@pytest.mark.skip(reason="not implemented")
-def test_math(manager):
-    assert 2 + 2 == 5   # This should fail for most mathematical systems\
+# # Function name starts with "test_"
+# @pytest.mark.skip(reason="not implemented")
+# def test_math(manager):
+#     assert 2 + 2 == 5   # This should fail for most mathematical systems\
 
 @pytest.mark.skip(reason="not implemented")
 def test_send_waypoint_NED(manager):
@@ -78,9 +78,19 @@ def test_offset_point_FLU(manager):
     FLUoffset = create_point(-0.5, -0.5, -0.5)
     assert manager.offsetPointFLU(FLUpoint, FLUoffset) == create_point(0.5, 0.5, 0.5) # - all
 
-@pytest.mark.skip(reason="not implemented")
+# @pytest.mark.skip(reason="not implemented")
 def test_FLU_to_NED(manager):
-    assert 2 + 2 == 5  
+    # make publisher
+    pub = get_publisher(manager, DroneTelemetry, "drone_telemetry_topic")
+
+    dronePoint = create_point(0,0,0)
+    msg = mock_telemetry(dronePoint) #only care about position here
+    
+    pub.publish(msg)
+
+    FLUoffsetPoint = create_point(1, 2, 3)
+    assert manager.FLU2NED(FLUoffsetPoint, 0) = create_point(1, 2, 3) # basic, no heading incorporated
+    assert manager.FLU2NED(FLUoffsetPoint, 90.0) = create_point(2, 1, 3) #90 degree turn
 
 @pytest.mark.skip(reason="not implemented")
 def test_FLU_to_NED_quaternion(manager):
@@ -90,7 +100,7 @@ def test_is_in_range_NED(manager):
     # make publisher
     pub = get_publisher(manager, DroneTelemetry, "drone_telemetry_topic")
 
-    dronePoint = [0,0,0]
+    dronePoint = create_point(0,0,0)
     msg = mock_telemetry(dronePoint) #only care about position here
     
     pub. publish(msg)
@@ -112,7 +122,7 @@ def test_check_for_errors(manager):
 def test_check_failsafe(manager):
     assert 2 + 2 == 5  
 
-@pytest.mark.skip(reason="not used - not priority")
-def test_quaternion_to_heading(manager):
-    assert 2 + 2 == 5  
+# @pytest.mark.skip(reason="not used - not priority")
+# def test_quaternion_to_heading(manager):
+#     assert 2 + 2 == 5  
 
