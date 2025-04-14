@@ -516,7 +516,7 @@ class TaskManagerNode(Node):
         FLUoffset = to offset the point in the local FLU drone frame in F, L, U
         returns a Point              
         """
-        ##TEST
+        ##TESTED
 
         
         return Point(x=FLUpoint.x + FLUoffset.x, y=FLUpoint.y + FLUoffset.y, z=FLUpoint.z + FLUoffset.z)
@@ -616,13 +616,13 @@ class TaskManagerNode(Node):
         Returns true if drone's location is at given NEDpoint plus or minus given tolerance
         Otherwise returns false
         """
-        ##TEST
+        ##TESTED
 
         last_received = self.telemetry.pos.pose
 
-        # if there is no waypoint, false
-        if last_received is None:
-            return False
+        # This cannot ever be None
+        # if last_received is None:
+        #     return False
         
         self.debug(self.debug_vbm,f'NED point from VBM: ({NEDpoint.x},{NEDpoint.y},{NEDpoint.z})')
         self.debug(self.debug_drone, f'diffX, diffY, diffZ ({abs(last_received.position.x - NEDpoint.x)}, {abs(last_received.position.y - NEDpoint.y)}, {abs(last_received.position.z - NEDpoint.z)})')
@@ -648,7 +648,7 @@ class TaskManagerNode(Node):
         Note: 
             This feature only makes sense when referring to a unit quaternion. Calling this method will implicitly normalise the Quaternion object to a unit quaternion if it is not already one.
         """
-        ##TEST
+        ##this currently is not run anywhere
         
         qw = quat.w
         qx = quat.x
