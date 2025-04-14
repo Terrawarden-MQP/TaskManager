@@ -161,6 +161,9 @@ class TaskManagerNode(Node):
             # for now it could use the hold state pos tracking, but I will keep it like this for the future
         self.search_start_time = None
         self.search_start_heading = None
+        self.grasp_attempts = 0
+        self.grasp_failures_before_abandon = 5
+        self.navigate_detection_timeout = 5 # seconds
         self.entry_point = None
         self.border_points = []
         self.approach_point_offset = Point(x=-0.707, y=0.0, z=0.707)
@@ -811,7 +814,7 @@ class TaskManagerNode(Node):
             #     heading=heading_deg,
             #     max_ang_vel_deg_s=degrees_per_second * 0.5,  # Slow down for the final preparation to the detected object
             # )
-            self.unstow_arm() # TODO uncomment
+            self.unstow_arm()
 
             # # wait until arm is not stowed anymore, before switching states
             # def check_arm_position_unstowed():
@@ -858,6 +861,16 @@ class TaskManagerNode(Node):
                 self.debug(self.debug_vbm, f'within range of object, changing to GRASPING')               
                 return self.set_wait(State.TRACKING, 5) # Move to grasp after 5 seconds
 
+        else:
+            # No new data - check how old the previous data is
+            prev_message_time = self.extract_pt.header.stamp.nanosec * 1e-9
+            now_time = self.get_clock().now().to_msg().nanosec * 1e-9
+            # self.debug(self.debug_detect, f"Time since last extraction {now_time - prev_message_time}")
+            # If our last detection is 3+ seconds old, go back to searching
+            if now_time - prev_message_time > self.navigate_detection_timeout:
+                self.debug(self.debug_detect, f"Last extracted point more than {self.navigate_detection_timeout} seconds old! Returning to SEARCHING")
+                # return State.SEARCHING
+
         # stay in navigation state
         self.debug(self.debug_drone, f'out of range, continue NAVIGATING') 
 
@@ -881,7 +894,7 @@ class TaskManagerNode(Node):
             pt.header = self.extract_pt.header
             pt.pose.position = self.extract_pt.point
 
-            tracking_offset = .05
+            tracking_offset = .075 # 7.5 cm
 
             theta = math.atan2(pt.pose.position.y, pt.pose.position.x)
 
@@ -908,8 +921,6 @@ class TaskManagerNode(Node):
             # See more info in #manipulators  -K
             if posDiff < 0.05: # TODO uncomment
                 return State.GRASPING
-            # elif posDiff > 0.25: # TODO uncomment
-                # self.openGripper() # TODO uncomment
         
         return State.TRACKING 
 
@@ -922,42 +933,60 @@ class TaskManagerNode(Node):
         '''
 
         #TODO: possibly move drone closer, within arm's reach? or maybe do that beforehand in navigate
+
+        # me thinks this should happen in track, but should be a very slow motion -K
         self.droneHover()
         
         # calculate grasp
         # generate posestamped message from grasp    
         
-        if self.is_new_data_from_subscriber(self.extract_subscriber):
-            pt = PoseStamped()
-            pt.header = self.extract_pt.header
-            pt.pose.position = self.extract_pt.point
-             
-            diffx = self.arm_status.ee_pos.x - pt.pose.position.x
-            diffy = self.arm_status.ee_pos.y - pt.pose.position.y 
-            diffz = self.arm_status.ee_pos.z - pt.pose.position.z
-            posDiff = math.sqrt(diffx**2 + diffy**2 + diffz**2)
-            
-            # send the grasp command to the arm
-            self.sendArmCommand(pt, task_space="track", grasp_at_end_of_movement=True) # TODO uncomment
+        # Does this function need to only update when we see a new extracted point?
+        # OR do we want it to grab when we're close to the previous setpoint
+        # even if we haven't yet gotten an update for its exact location?
+        # Trying to cover the case where the grasp occludes the can so detection doesn't see it
+        # -K
 
-            # self.grasp_tolerance = 0.025
-            self.debug(self.debug_arm, f"Position difference between armPos and setpoint: {posDiff}")
-            # in theory meters - these should be class variables but i'm still testing them
-            # See more info in #manipulators  -K
-            # if posDiff < 0.05: # TODO uncomment
-                # self.closeGripper() # TODO uncomment
-            # elif posDiff > 0.25: # TODO uncomment
-                # self.openGripper() # TODO uncomment
+        # if self.is_new_data_from_subscriber(self.extract_subscriber):
+
+        pt = PoseStamped()
+        pt.header = self.extract_pt.header
+        pt.pose.position = self.extract_pt.point
+            
+        diffx = self.arm_status.ee_pos.x - pt.pose.position.x
+        diffy = self.arm_status.ee_pos.y - pt.pose.position.y 
+        diffz = self.arm_status.ee_pos.z - pt.pose.position.z
+        posDiff = math.sqrt(diffx**2 + diffy**2 + diffz**2)
         
-            #TODO: check that arm got a grasp and we can move to a new state
-            if self.arm_status.grasping_object == True:
-                self.debug(self.debug_arm, f'grasp successful, moving to next state')
-                return State.DEPOSIT  
-            # else: keep trying to grasp for a limited time
-            # TODO: add timeout for grasping, if it fails after 5 attempts or so, return to search
-            #   self.debug(self.debug_arm, f'grasp failed, retrying grasp')
-            #   # TODO: command the drone to go to a position couple meters above 
-            #   return self.set_wait(State.SEARCHING, 5)
+        # send the grasp command to the arm
+
+        # this should be task not track right? -K
+        self.sendArmCommand(pt, task_space="track", grasp_at_end_of_movement=False) # TODO uncomment
+
+        # self.grasp_tolerance = 0.025
+        self.debug(self.debug_arm, f"Position difference between armPos and setpoint: {posDiff}")
+        
+        # in theory meters - these should be class variables but i'm still testing them
+        # See more info in #manipulators  -K
+        if posDiff < 0.025: # TODO uncomment
+            self.closeGripper() # TODO uncomment
+        if posDiff > 0.25: # Go back to tracking if we're too far away
+            self.openGripper()
+            self.debug(self.debug_arm, f'grasp unsuccessful, returning to track')
+            return State.TRACKING # TODO uncomment
+    
+        #TODO: check that arm got a grasp and we can move to a new state
+        if self.arm_status.grasping_object == True:
+            self.debug(self.debug_arm, f'grasp successful, moving to next state')
+            # return State.DEPOSITING
+            
+        # else: keep trying to grasp for a limited time
+        # self.grasp_attempts increments in state transition
+        # for each time we move back and forth from track -> grasp
+        if self.grasp_attempts >= self.grasp_failures_before_abandon:
+        # TODO: add timeout for grasping, if it fails after 5 attempts or so, return to search
+            self.debug(self.debug_arm, f'grasp failed repeatedly, abandoning grasp')
+        #   # TODO: command the drone to go to a position couple meters above 
+            return self.set_wait(State.SEARCHING, 5)
         
         return State.GRASPING 
 
@@ -1113,6 +1142,16 @@ class TaskManagerNode(Node):
             self.search_start_heading = self.telemetry.heading_degrees
             self.saveDroneHoldPose()
             self.debug(self.debug_drone, "Starting search pattern")
+
+        elif new_state == State.GRASPING and old_state != State.GRASPING:
+            # Increment for each time we attempt to grab the thing 
+            self.grasp_attempts += 1
+        elif new_state == State.SEARCHING and old_state == State.GRASPING:
+            # Reset if grasp failed 5 times
+            self.grasp_attempts = 0
+        elif new_state == State.DEPOSITING and old_state == State.GRASPING:
+            # Reset if grasp was successful
+            self.grasp_attempts = 0
             
         elif new_state == State.DEPOSITING and old_state != State.DEPOSITING:
             """
