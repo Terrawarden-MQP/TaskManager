@@ -68,8 +68,8 @@ def timeout_condition(timeout_s: float, condition: Callable[[], bool]):
     while time.time() <= start_time + float(timeout_s):
         did_condition_occur = condition()
         if did_condition_occur:
-            break
-    return did_condition_occur
+            return True
+    return False
 
 def create_point(x: float, y: float, z: float):
     point = Point(x=float(x), y=float(y), z=float(z))
