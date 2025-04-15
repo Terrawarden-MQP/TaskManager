@@ -527,7 +527,7 @@ class TaskManagerNode(Node):
         yaw is Heading in DEGREES 0 to 360
         Returns the offset as a Point in NED
         """
-        ##TEST
+        ##TESTed
 
         # if no heading is given, keep current heading
         if heading_deg is None:

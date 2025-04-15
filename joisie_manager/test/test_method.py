@@ -18,7 +18,7 @@ import math
 from enum import Enum, auto
 import time
 import pytest
-from ..joisie_manager.taskmanager import *
+from ../joisie_manager.taskmanager import *
 
 from .test_helpers import *
 
@@ -94,7 +94,20 @@ def test_FLU_to_NED(manager):
 
 @pytest.mark.skip(reason="not implemented")
 def test_FLU_to_NED_quaternion(manager):
-    assert 2 + 2 == 5  
+    # make publisher
+    pub = get_publisher(manager, DroneTelemetry, "drone_telemetry_topic")
+
+    dronePoint = create_point(0,0,0)
+    msg = mock_telemetry(dronePoint) #only care about position here
+    
+    pub.publish(msg)
+
+    FLUoffsetPoint = create_point(1, 2, 3)
+    assert manager.FLU2NED_quaternion(FLUoffsetPoint) == create_point(1, 2, 3) # basic, no heading incorporated
+
+    # turn drone 90 degress
+    assert manager.FLU2NED_quaternion(FLUoffsetPoint) == create_point(2, 1, 3) #90 degree turn
+ 
 
 def test_is_in_range_NED(manager):
     # make publisher
