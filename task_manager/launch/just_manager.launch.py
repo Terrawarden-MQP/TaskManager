@@ -21,6 +21,9 @@ def generate_launch_description():
         DeclareLaunchArgument("arm_service_topic", default_value="joisie_arm_inrange_service", description="Topic for InRangeOfObj Service Call to Arm Node"),
         DeclareLaunchArgument("state_setter_topic", default_value="joisie_set_state", description="Topic for setting states"),
         DeclareLaunchArgument("state_topic",default_value="joisie_state",description="Topic to publish task manager state information"),
+        DeclareLaunchArgument("manager_debug",default_value="0b11111",description="Flags for selecting which sections of code to debug"),
+        DeclareLaunchArgument("override_errors",default_value="false",description="Flag for overriding error checking (useful for ground testing). If true, changes all wait times to 0.5"),
+        
         Node(
             package="joisie_manager",
             namespace="joisie_manager",
@@ -37,6 +40,8 @@ def generate_launch_description():
                 "arm_service_topic": LaunchConfiguration("arm_service_topic"),
                 "state_setter_topic": LaunchConfiguration("state_setter_topic"),
                 "state_topic": LaunchConfiguration("state_topic"),
+                "manager_debug": LaunchConfiguration("manager_debug"),
+                "override_errors": LaunchConfiguration("override_errors"),
             }]
         ),
     ])

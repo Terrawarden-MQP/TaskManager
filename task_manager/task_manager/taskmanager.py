@@ -35,8 +35,8 @@ class State(Enum):
     FAILSAFE = "FAILSAFE"
     LANDING = "LAND"
     
-# launch using the: ros2 launch joisie_manager all_nodes.launch.py manager_debug:=0b11000
-# manually set state: ros2 topic pub -1 /joisie_set_state std_msgs/msg/String "{data: 'SEARCH'}"
+# launch using the: ros2 launch task_manager all_nodes.launch.py
+# manually set state: ros2 topic pub -1 /manager_set_state std_msgs/msg/String "{data: 'SEARCH'}"
 
 class TaskManagerNode(Node):
 
@@ -61,73 +61,48 @@ class TaskManagerNode(Node):
 
         ### TOPIC DECLARATION - ALL PARAMETERIZED THROUGH ROS2 LAUNCH
 
-        ### DRONE TOPICS ------------------------------------------------------
-        # param_name_topic_tuples = [
-        #     ## Topic for sending target pose to drone
-        #     ('drone_pose_topic', 'drone/waypoint'),
-        #     ## Topic for receiving Telemetry from Drone Node
-        #     ('drone_telemetry_topic', 'drone/telemetry')
-        # ]
-        self.declare_parameter('drone_pose_topic', 'drone/waypoint')
-        self.declare_parameter('drone_telemetry_topic', 'drone/telemetry')
-
-        # self.declare_parameter('telemetry', 'joisie_telemetry')
-
-        # Topic for sending target pose to drone
-        # self.declare_parameter('drone_pose_topic', 'joisie_target_pose')
-
-        ### DETECTION TOPICS --------------------------------------------------
-        
+        # Binds ROS2 Launch argument names to the default topics
+        param_name_topic_tuples = [
+        ## Topic for sending target pose to drone
+            ('drone_pose_topic', 'drone/waypoint'),
+        ## Topic for receiving Telemetry from Drone Node
+            ('drone_telemetry_topic', 'drone/telemetry'),
         # Topic for receiving Detection from LiveDetect Node
-        self.declare_parameter('detection_topic', 'joisie_detection')
-
+            ('detection_topic', 'live_detection'),
         # Topic for sending detected object centroid to VBM
-        self.declare_parameter('centroid_topic', 'joisie_detected_centroid')
-
+            ('centroid_topic', 'detected_centroid'),
         # Topic for receiving 3D point from VBM extract_cluster
-        self.declare_parameter('vbm_extract_topic', 'joisie_extract_centroid')
-
+            ('vbm_extract_topic', 'extract_centroid'),
         # Topic for receiving grasp from VBM optimal_grasp
-        self.declare_parameter('vbm_grasp_topic', 'joisie_grasp_read')
-
-        ### ARM TOPICS --------------------------------------------------------
-
+            ('vbm_grasp_topic', 'grasp_read'),
         # Topic for sending gripper to move
-        self.declare_parameter('grasp_command_topic', 'force_grasp')
-
-        # Topic for sending arm commands to move on trajectories and potentiall to grasp
-        self.declare_parameter('arm_command_topic', 'move_arm_command')
-
+            ('grasp_command_topic', 'force_grasp'),
+        # Topic for sending arm commands to move on trajectories and potentially to grasp
+            ('arm_command_topic', 'move_arm_command'),
         # CustomArmMsg from Arm Node
-        self.declare_parameter('arm_status_topic', 'arm_status')
-
-        # Topic for InRangeOfObj Service Call to Arm Node
-        self.declare_parameter('arm_service_topic', 'joisie_arm_inrange_service')
-
+            ('arm_status_topic', 'arm_status'),
         # Topic for Stow Service Call to Arm Node
-        self.declare_parameter('arm_stow_service_topic', 'stow_arm')
-
+            ('arm_stow_service_topic', 'stow_arm'),
         # Topic for Unstow Service Call to Arm Node
-        self.declare_parameter('arm_unstow_service_topic', 'unstow_arm')
-
-        ### STATE TOPICS --------------------------------------------------
-        
+            ('arm_unstow_service_topic', 'unstow_arm'),
         # Topic to send state information
-        self.declare_parameter('state_topic','joisie_state')
+            ('state_topic','manager_state'),
+        # Topic to recieve set_state information
+            ('state_setter_topic', 'manager_set_state')
+        ]
 
-        self.declare_parameter('state_setter_topic', 'joisie_set_state')
-        
-        # -----
-        # SERVICES
-
-        # self.in_range_service = self.create_client(Bool, self.get_parameter('arm_grasp_topic').value) # TODO fix or delete
+        # Loop to declare all topic arguments
+        for param_name, default_topic in param_name_topic_tuples:
+            self.declare_parameter(param_name, default_topic)
 
         # -----
         # DEBUG
+
         self.declare_parameter('override_errors',False)
-        self.declare_parameter('debug', 0b11111)
+        self.declare_parameter('manager_debug', 0b11111)
+
         self.override_errors = self.get_parameter('override_errors').value
-        debug = self.get_parameter('debug').value
+        debug = self.get_parameter('manager_debug').value
         self.debug_publish  = bool(debug & 0b10000)
         self.debug_drone    = bool(debug & 0b01000)
         self.debug_detect   = bool(debug & 0b00100)
@@ -213,8 +188,6 @@ class TaskManagerNode(Node):
 
         self.drone_publisher = self.create_publisher(DroneWaypoint, 
                                                     self.get_parameter('drone_pose_topic').value, 10)
-        # self.centroid_publisher = self.create_publisher(Pose2D, # this publisher is redundant and not used
-        #                                             self.get_parameter('centroid_topic').value, 10)
         self.force_grasp_publisher = self.create_publisher(Bool, 
                                                     self.get_parameter('grasp_command_topic').value, 10)
         self.arm_command_publisher = self.create_publisher(ArmCommand, 
@@ -278,6 +251,7 @@ class TaskManagerNode(Node):
         except ValueError:
             self.debug(True, f"[WARNING] No matching state for string: {string}")
 
+    ### In retrospect the raw detection info wasn't very useful for direct decision making, so this is just here for debug
     @property
     def detection(self) -> Detection2D:
         self.received_new[self.detection_subscriber.topic] = False
@@ -298,9 +272,16 @@ class TaskManagerNode(Node):
         self.received_new[self.telemetry_subscriber.topic] = True
         self._telemetry = ros_msg
 
+        # When we recieve an extracted centroid, its position is in FLU relative to the position
+        #  that the drone was in when the latest depth data was pulled from the RealSense. 
+        # We store that timestamp and try to find the telemetry data closest to that time
+
         #                               Timestamp              Message
         self.telemetry_queue.append((ros_msg.pos.header.stamp, ros_msg))
 
+        # The format of ROS2 Timestamps is a little weird, since depending on if they were pulled from rclcpp or rclpy
+        # they store the data differently (either all in nanosec or a mix). As such, this is a slightly redundant comparison
+        # but will properly compare across the 'types' of timestamps
         compare_times = lambda t1, t2: abs(t1.sec + t1.nanosec/1e9 - t2.sec - t2.nanosec/1e9)
         TELEMETRY_QUEUE_TIME = 5 # SECONDS
         
